@@ -1,14 +1,15 @@
 "use client";
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Volume2, Wallet, History } from "lucide-react";
+import { ArrowLeft, Wallet, History, X } from "lucide-react";
 
 export default function WinGoPage() {
-  const [timeLeft, setTimeLeft] = useState(14);
-  const [selectedColor, setSelectedColor] = useState(null);
-  const [selectedNumber, setSelectedNumber] = useState(null);
+  const [timeLeft, setTimeLeft] = useState(30);
+  const [betModal, setBetModal] = useState({ open: false, type: "", selection: "" });
+  const [betAmount, setBetAmount] = useState(1);
+  const [multiplier, setMultiplier] = useState(1);
 
-  // Countdown timer for 30s game
+  // Synchronized countdown timer
   useEffect(() => {
     const timer = setInterval(() => {
       setTimeLeft((prev) => (prev > 0 ? prev - 1 : 30));
@@ -16,17 +17,16 @@ export default function WinGoPage() {
     return () => clearInterval(timer);
   }, []);
 
-  const history = [
-    { period: "2026093030583685", num: 2, bs: "Small", color: "red" },
-    { period: "2026093030583684", num: 3, bs: "Small", color: "green" },
-    { period: "2026093030583683", num: 3, bs: "Small", color: "green" },
-    { period: "2026093030583682", num: 9, bs: "Big", color: "green" },
-    { period: "2026093030583681", num: 0, bs: "Small", color: "violet" },
-  ];
+  const openBet = (type, val) => {
+    if (timeLeft <= 5) return; // Last 5 seconds betting locked
+    setBetModal({ open: true, type, selection: val });
+  };
+
+  const totalBet = betAmount * multiplier;
 
   return (
-    <div className="min-h-screen bg-[#111317] text-white pb-10 max-w-md mx-auto">
-      {/* Header */}
+    <div className="min-h-screen bg-[#111317] text-white pb-10 max-w-md mx-auto relative overflow-hidden">
+      {/* Top Header */}
       <div className="bg-[#191c22] p-4 flex items-center justify-between border-b border-gray-800">
         <Link href="/user/select-panel" className="text-gray-300">
           <ArrowLeft size={20} />
@@ -41,18 +41,18 @@ export default function WinGoPage() {
           <span className="text-[11px] font-semibold flex items-center gap-1">
             <Wallet size={14} /> Wallet Balance
           </span>
-          <div className="text-2xl font-black my-1">₹121.69</div>
+          <div className="text-2xl font-black my-1">₹129.69</div>
           <div className="flex gap-2 mt-3">
-            <button className="flex-1 bg-black/80 hover:bg-black text-white text-xs font-semibold py-2 rounded-xl">
+            <Link href="/user/crypto/deposit" className="flex-1 bg-black/80 hover:bg-black text-white text-xs font-semibold py-2 rounded-xl text-center">
               Deposit
-            </button>
-            <button className="flex-1 bg-white/80 hover:bg-white text-black text-xs font-semibold py-2 rounded-xl">
+            </Link>
+            <Link href="/user/crypto/withdraw" className="flex-1 bg-white/80 hover:bg-white text-black text-xs font-semibold py-2 rounded-xl text-center">
               Withdraw
-            </button>
+            </Link>
           </div>
         </div>
 
-        {/* Game Interval Selection */}
+        {/* Intervals */}
         <div className="grid grid-cols-4 gap-2">
           {["30 Sec", "1 Min", "3 Min", "5 Min"].map((tab, idx) => (
             <div
@@ -72,9 +72,9 @@ export default function WinGoPage() {
         {/* Timer Card */}
         <div className="bg-[#181a20] border border-gray-800 rounded-2xl p-4 flex justify-between items-center">
           <div>
-            <span className="text-xs text-gray-400 block mb-1">Period: 20260930583686</span>
+            <span className="text-xs text-gray-400 block mb-1">Period: 2026100130067974</span>
             <div className="flex gap-1">
-              {[2, 3, 3, 9, 0].map((n, i) => (
+              {[8, 7, 7, 6, 7].map((n, i) => (
                 <span key={i} className="w-5 h-5 rounded-full bg-gray-700 text-[10px] flex items-center justify-center font-bold">
                   {n}
                 </span>
@@ -89,23 +89,23 @@ export default function WinGoPage() {
           </div>
         </div>
 
-        {/* Color Betting: Green, Violet, Red */}
+        {/* Color Buttons */}
         <div className="grid grid-cols-3 gap-3">
           <button
-            onClick={() => setSelectedColor("Green")}
-            className="bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-emerald-900/30"
+            onClick={() => openBet("Color", "Green")}
+            className="bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl font-bold text-sm shadow-md"
           >
             Green
           </button>
           <button
-            onClick={() => setSelectedColor("Violet")}
-            className="bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-purple-900/30"
+            onClick={() => openBet("Color", "Violet")}
+            className="bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl font-bold text-sm shadow-md"
           >
             Violet
           </button>
           <button
-            onClick={() => setSelectedColor("Red")}
-            className="bg-rose-600 hover:bg-rose-500 py-2.5 rounded-xl font-bold text-sm shadow-lg shadow-rose-900/30"
+            onClick={() => openBet("Color", "Red")}
+            className="bg-rose-600 hover:bg-rose-500 py-2.5 rounded-xl font-bold text-sm shadow-md"
           >
             Red
           </button>
@@ -116,10 +116,8 @@ export default function WinGoPage() {
           {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
             <button
               key={num}
-              onClick={() => setSelectedNumber(num)}
+              onClick={() => openBet("Number", num)}
               className={`h-11 rounded-full font-black text-sm flex items-center justify-center transition border ${
-                selectedNumber === num ? "ring-2 ring-[#f5a623]" : ""
-              } ${
                 num === 0 || num === 5
                   ? "bg-purple-600 border-purple-400"
                   : num % 2 === 0
@@ -132,41 +130,105 @@ export default function WinGoPage() {
           ))}
         </div>
 
-        {/* Big / Small */}
+        {/* Big / Small Buttons */}
         <div className="grid grid-cols-2 gap-3">
-          <button className="bg-[#f5a623] hover:bg-[#e0961f] text-black font-bold py-2.5 rounded-xl text-sm">
+          <button
+            onClick={() => openBet("Size", "Big")}
+            className="bg-[#f5a623] hover:bg-[#e0961f] text-black font-bold py-2.5 rounded-xl text-sm"
+          >
             Big
           </button>
-          <button className="bg-sky-600 hover:bg-sky-500 font-bold py-2.5 rounded-xl text-sm">
+          <button
+            onClick={() => openBet("Size", "Small")}
+            className="bg-sky-600 hover:bg-sky-500 font-bold py-2.5 rounded-xl text-sm"
+          >
             Small
           </button>
         </div>
+      </div>
 
-        {/* History Table */}
-        <div className="bg-[#181a20] rounded-2xl border border-gray-800 overflow-hidden mt-4">
-          <div className="p-3 border-b border-gray-800 text-xs font-bold text-gray-300 flex items-center gap-1">
-            <History size={14} /> Game History
-          </div>
-          <div className="divide-y divide-gray-800/60 text-xs">
-            {history.map((row) => (
-              <div key={row.period} className="p-2.5 flex items-center justify-between">
-                <span className="text-gray-400 text-[11px]">{row.period}</span>
-                <span className="font-bold text-[#f5a623]">{row.num}</span>
-                <span className="text-gray-300">{row.bs}</span>
-                <span
-                  className={`w-3 h-3 rounded-full ${
-                    row.color === "green"
-                      ? "bg-emerald-500"
-                      : row.color === "red"
-                      ? "bg-rose-500"
-                      : "bg-purple-500"
-                  }`}
-                />
-              </div>
-            ))}
+      {/* 5-SECOND BIG COUNTDOWN OVERLAY (Video 00:57 - 01:02) */}
+      {timeLeft <= 5 && (
+        <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-40 flex items-center justify-center">
+          <div className="flex gap-4">
+            <div className="w-24 h-36 bg-[#cca869] text-black font-mono font-black text-7xl rounded-2xl flex items-center justify-center shadow-2xl border-4 border-yellow-200">
+              0
+            </div>
+            <div className="w-24 h-36 bg-[#cca869] text-black font-mono font-black text-7xl rounded-2xl flex items-center justify-center shadow-2xl border-4 border-yellow-200">
+              {timeLeft}
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* BET BOTTOM DRAWER MODAL (Video 01:20) */}
+      {betModal.open && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
+          <div className="w-full max-w-md bg-[#1c1f26] rounded-t-3xl p-5 border-t border-gray-700 space-y-4 animate-in slide-in-from-bottom">
+            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
+              <span className="font-bold text-sm text-[#f5a623]">Win Go - Select {betModal.selection}</span>
+              <button onClick={() => setBetModal({ open: false, type: "", selection: "" })} className="text-gray-400">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Base Balance Selection */}
+            <div>
+              <span className="text-xs text-gray-400 block mb-1">Balance</span>
+              <div className="grid grid-cols-4 gap-2">
+                {[1, 10, 100, 1000].map((val) => (
+                  <button
+                    key={val}
+                    onClick={() => setBetAmount(val)}
+                    className={`py-1.5 rounded-lg text-xs font-bold border transition ${
+                      betAmount === val ? "bg-[#f5a623] text-black border-[#f5a623]" : "bg-[#14161c] border-gray-700 text-gray-300"
+                    }`}
+                  >
+                    {val}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Multiplier Selection */}
+            <div>
+              <span className="text-xs text-gray-400 block mb-1">Multiplier</span>
+              <div className="grid grid-cols-6 gap-1.5">
+                {[1, 5, 10, 20, 50, 100].map((m) => (
+                  <button
+                    key={m}
+                    onClick={() => setMultiplier(m)}
+                    className={`py-1 rounded-lg text-xs font-bold border transition ${
+                      multiplier === m ? "bg-[#f5a623] text-black border-[#f5a623]" : "bg-[#14161c] border-gray-700 text-gray-400"
+                    }`}
+                  >
+                    X{m}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Bottom Confirm Bar */}
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                onClick={() => setBetModal({ open: false, type: "", selection: "" })}
+                className="flex-1 bg-gray-800 text-gray-300 py-2.5 rounded-xl text-xs font-bold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  alert(`Bet placed on ${betModal.selection} for ₹${totalBet}`);
+                  setBetModal({ open: false, type: "", selection: "" });
+                }}
+                className="flex-1 bg-[#f5a623] text-black py-2.5 rounded-xl text-xs font-bold hover:bg-[#e0961f]"
+              >
+                Total ₹{totalBet}.00
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
