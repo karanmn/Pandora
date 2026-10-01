@@ -1,234 +1,234 @@
 "use client";
+
 import { useState, useEffect } from "react";
 import Link from "next/link";
-import { ArrowLeft, Wallet, History, X } from "lucide-react";
+import { ArrowLeft, Wallet, AlertCircle, Clock } from "lucide-react";
 
-export default function WinGoPage() {
-  const [timeLeft, setTimeLeft] = useState(30);
-  const [betModal, setBetModal] = useState({ open: false, type: "", selection: "" });
-  const [betAmount, setBetAmount] = useState(1);
-  const [multiplier, setMultiplier] = useState(1);
+const INTERVALS = [
+  { label: "30 Sec", duration: 30 },
+  { label: "1 Min", duration: 60 },
+  { label: "3 Min", duration: 180 },
+  { label: "5 Min", duration: 300 },
+];
 
-  // Synchronized countdown timer
+export default function MockMultiTimerSimulator() {
+  const [activeInterval, setActiveInterval] = useState(INTERVALS[0]);
+  const [secondsRemaining, setSecondsRemaining] = useState(30);
+  const [periodId, setPeriodId] = useState("");
+  const [virtualBalance, setVirtualBalance] = useState(129.69);
+  const [selectedUnit, setSelectedUnit] = useState(10);
+  const [actionLog, setActionLog] = useState([]);
+  const [errorNotice, setErrorNotice] = useState("");
+
+  // Drift-free synchronized timer based on active interval
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 30));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    const updateTimer = () => {
+      const now = new Date();
+      const currentEpochSec = Math.floor(now.getTime() / 1000);
 
-  const openBet = (type, val) => {
-    if (timeLeft <= 5) return; // Last 5 seconds betting locked
-    setBetModal({ open: true, type, selection: val });
+      // Remaining seconds in current block
+      const rem = activeInterval.duration - (currentEpochSec % activeInterval.duration);
+      setSecondsRemaining(rem === activeInterval.duration ? 0 : rem);
+
+      // Deterministic period sequence
+      const datePart = now.toISOString().slice(0, 10).replace(/-/g, "");
+      const secondsSinceMidnight =
+        now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds();
+      const roundIndex = Math.floor(secondsSinceMidnight / activeInterval.duration) + 1;
+
+      setPeriodId(`${datePart}${String(roundIndex).padStart(5, "0")}`);
+    };
+
+    updateTimer();
+    const intervalRunner = setInterval(updateTimer, 1000);
+    return () => clearInterval(intervalRunner);
+  }, [activeInterval]);
+
+  // Format seconds to MM:SS
+  const formatTime = (totalSec) => {
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return `${String(m).padStart(2, "0")} : ${String(s).padStart(2, "0")}`;
   };
 
-  const totalBet = betAmount * multiplier;
+  const isLocked = secondsRemaining <= 5;
+
+  const handleExecution = (choice) => {
+    setErrorNotice("");
+
+    if (isLocked) {
+      setErrorNotice("Round locked during final 5 seconds.");
+      return;
+    }
+
+    if (virtualBalance < selectedUnit) {
+      setErrorNotice("Insufficient demo balance.");
+      return;
+    }
+
+    // Atomic balance deduction
+    setVirtualBalance((prev) => parseFloat((prev - selectedUnit).toFixed(2)));
+
+    const entry = {
+      id: Date.now(),
+      interval: activeInterval.label,
+      period: periodId,
+      choice,
+      amount: selectedUnit,
+      timestamp: new Date().toLocaleTimeString(),
+    };
+
+    setActionLog((prev) => [entry, ...prev.slice(0, 5)]);
+  };
 
   return (
-    <div className="min-h-screen bg-[#111317] text-white pb-10 max-w-md mx-auto relative overflow-hidden">
+    <div className="min-h-screen bg-[#111317] text-white p-4 max-w-md mx-auto space-y-4 font-sans">
       {/* Top Header */}
-      <div className="bg-[#191c22] p-4 flex items-center justify-between border-b border-gray-800">
-        <Link href="/user/select-panel" className="text-gray-300">
+      <div className="flex items-center justify-between border-b border-gray-800 pb-3">
+        <Link href="/user/select-panel" className="text-gray-400 hover:text-white">
           <ArrowLeft size={20} />
         </Link>
-        <span className="font-extrabold text-sm tracking-wider uppercase text-yellow-500">PANDORA PLAY</span>
+        <span className="font-bold text-sm tracking-wider uppercase text-yellow-500">
+          Simulation Studio
+        </span>
         <div className="w-5" />
       </div>
 
-      <div className="p-4 space-y-4">
-        {/* Wallet Balance Gold Card */}
-        <div className="bg-gradient-to-r from-[#d4a046] to-[#b37e28] text-black p-4 rounded-2xl shadow-lg">
-          <span className="text-[11px] font-semibold flex items-center gap-1">
-            <Wallet size={14} /> Wallet Balance
-          </span>
-          <div className="text-2xl font-black my-1">₹129.69</div>
-          <div className="flex gap-2 mt-3">
-            <Link href="/user/crypto/deposit" className="flex-1 bg-black/80 hover:bg-black text-white text-xs font-semibold py-2 rounded-xl text-center">
-              Deposit
-            </Link>
-            <Link href="/user/crypto/withdraw" className="flex-1 bg-white/80 hover:bg-white text-black text-xs font-semibold py-2 rounded-xl text-center">
-              Withdraw
-            </Link>
+      {/* Balance Card */}
+      <div className="bg-[#181a20] border border-gray-800 rounded-2xl p-4 flex justify-between items-center">
+        <div>
+          <span className="text-xs text-gray-400 block mb-1">Demo Balance</span>
+          <div className="text-2xl font-black text-white">
+            ₹{virtualBalance.toFixed(2)}
           </div>
         </div>
+        <button
+          onClick={() => setVirtualBalance(100.0)}
+          className="text-xs bg-[#252834] text-gray-300 px-3 py-1.5 rounded-lg border border-gray-700 hover:border-yellow-500"
+        >
+          Reset Demo
+        </button>
+      </div>
 
-        {/* Intervals */}
-        <div className="grid grid-cols-4 gap-2">
-          {["30 Sec", "1 Min", "3 Min", "5 Min"].map((tab, idx) => (
-            <div
-              key={tab}
-              className={`p-2.5 rounded-xl border text-center cursor-pointer transition ${
-                idx === 0
+      {/* 4 Timers Tab Selector */}
+      <div className="grid grid-cols-4 gap-2">
+        {INTERVALS.map((tab) => {
+          const isSelected = activeInterval.duration === tab.duration;
+          return (
+            <button
+              key={tab.label}
+              onClick={() => {
+                setActiveInterval(tab);
+                setErrorNotice("");
+              }}
+              className={`p-2 rounded-xl border text-center transition ${
+                isSelected
                   ? "bg-[#252834] border-[#f5a623] text-[#f5a623]"
                   : "bg-[#181a20] border-gray-800 text-gray-400"
               }`}
             >
-              <div className="text-xs font-bold">Win Go</div>
-              <div className="text-[10px]">{tab}</div>
-            </div>
-          ))}
-        </div>
+              <Clock size={14} className="mx-auto mb-1" />
+              <div className="text-xs font-bold">{tab.label}</div>
+            </button>
+          );
+        })}
+      </div>
 
-        {/* Timer Card */}
-        <div className="bg-[#181a20] border border-gray-800 rounded-2xl p-4 flex justify-between items-center">
-          <div>
-            <span className="text-xs text-gray-400 block mb-1">Period: 2026100130067974</span>
-            <div className="flex gap-1">
-              {[8, 7, 7, 6, 7].map((n, i) => (
-                <span key={i} className="w-5 h-5 rounded-full bg-gray-700 text-[10px] flex items-center justify-center font-bold">
-                  {n}
-                </span>
-              ))}
-            </div>
-          </div>
-          <div className="text-right">
-            <span className="text-[10px] text-gray-400 block">Time remaining</span>
-            <div className="text-xl font-mono font-black text-[#f5a623]">
-              00 : {timeLeft < 10 ? `0${timeLeft}` : timeLeft}
-            </div>
+      {/* Live Timer & Period Info */}
+      <div className="bg-[#181a20] border border-gray-800 rounded-2xl p-4 flex justify-between items-center">
+        <div>
+          <span className="text-[10px] text-gray-500 block">Period ID</span>
+          <span className="text-xs font-mono font-bold text-gray-300">{periodId}</span>
+        </div>
+        <div className="text-right">
+          <span className="text-[10px] text-gray-500 block">Time Remaining</span>
+          <div
+            className={`text-2xl font-mono font-black ${
+              isLocked ? "text-red-500 animate-pulse" : "text-[#f5a623]"
+            }`}
+          >
+            {formatTime(secondsRemaining)}
           </div>
         </div>
+      </div>
 
-        {/* Color Buttons */}
-        <div className="grid grid-cols-3 gap-3">
-          <button
-            onClick={() => openBet("Color", "Green")}
-            className="bg-emerald-600 hover:bg-emerald-500 py-2.5 rounded-xl font-bold text-sm shadow-md"
-          >
-            Green
-          </button>
-          <button
-            onClick={() => openBet("Color", "Violet")}
-            className="bg-purple-600 hover:bg-purple-500 py-2.5 rounded-xl font-bold text-sm shadow-md"
-          >
-            Violet
-          </button>
-          <button
-            onClick={() => openBet("Color", "Red")}
-            className="bg-rose-600 hover:bg-rose-500 py-2.5 rounded-xl font-bold text-sm shadow-md"
-          >
-            Red
-          </button>
-        </div>
-
-        {/* Numbers 0 - 9 */}
-        <div className="grid grid-cols-5 gap-2 bg-[#181a20] p-3 rounded-2xl border border-gray-800">
-          {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
+      {/* Amount Selector */}
+      <div>
+        <label className="text-xs text-gray-400 block mb-2">Select Allocation Amount</label>
+        <div className="grid grid-cols-4 gap-2">
+          {[1, 10, 50, 100].map((amt) => (
             <button
-              key={num}
-              onClick={() => openBet("Number", num)}
-              className={`h-11 rounded-full font-black text-sm flex items-center justify-center transition border ${
-                num === 0 || num === 5
-                  ? "bg-purple-600 border-purple-400"
-                  : num % 2 === 0
-                  ? "bg-rose-600 border-rose-400"
-                  : "bg-emerald-600 border-emerald-400"
+              key={amt}
+              onClick={() => setSelectedUnit(amt)}
+              className={`py-2 rounded-xl text-xs font-bold border transition ${
+                selectedUnit === amt
+                  ? "bg-yellow-500 text-black border-yellow-500"
+                  : "bg-[#181a20] border-gray-800 text-gray-300 hover:border-gray-700"
               }`}
             >
-              {num}
+              ₹{amt}
             </button>
           ))}
         </div>
+      </div>
 
-        {/* Big / Small Buttons */}
+      {/* Action Buttons */}
+      <div className="space-y-2">
+        <label className="text-xs text-gray-400 block">Place Allocation ({activeInterval.label})</label>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => openBet("Size", "Big")}
-            className="bg-[#f5a623] hover:bg-[#e0961f] text-black font-bold py-2.5 rounded-xl text-sm"
+            disabled={isLocked}
+            onClick={() => handleExecution("Option Alpha")}
+            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white font-bold py-3 rounded-xl text-sm transition"
           >
-            Big
+            Option Alpha
           </button>
           <button
-            onClick={() => openBet("Size", "Small")}
-            className="bg-sky-600 hover:bg-sky-500 font-bold py-2.5 rounded-xl text-sm"
+            disabled={isLocked}
+            onClick={() => handleExecution("Option Beta")}
+            className="bg-rose-600 hover:bg-rose-500 disabled:opacity-40 text-white font-bold py-3 rounded-xl text-sm transition"
           >
-            Small
+            Option Beta
           </button>
         </div>
       </div>
 
-      {/* 5-SECOND BIG COUNTDOWN OVERLAY (Video 00:57 - 01:02) */}
-      {timeLeft <= 5 && (
-        <div className="absolute inset-0 bg-black/75 backdrop-blur-sm z-40 flex items-center justify-center">
-          <div className="flex gap-4">
-            <div className="w-24 h-36 bg-[#cca869] text-black font-mono font-black text-7xl rounded-2xl flex items-center justify-center shadow-2xl border-4 border-yellow-200">
-              0
-            </div>
-            <div className="w-24 h-36 bg-[#cca869] text-black font-mono font-black text-7xl rounded-2xl flex items-center justify-center shadow-2xl border-4 border-yellow-200">
-              {timeLeft}
-            </div>
-          </div>
+      {/* Alert Notice */}
+      {errorNotice && (
+        <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-xs p-3 rounded-xl flex items-center gap-2">
+          <AlertCircle size={16} />
+          <span>{errorNotice}</span>
         </div>
       )}
 
-      {/* BET BOTTOM DRAWER MODAL (Video 01:20) */}
-      {betModal.open && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-end justify-center">
-          <div className="w-full max-w-md bg-[#1c1f26] rounded-t-3xl p-5 border-t border-gray-700 space-y-4 animate-in slide-in-from-bottom">
-            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
-              <span className="font-bold text-sm text-[#f5a623]">Win Go - Select {betModal.selection}</span>
-              <button onClick={() => setBetModal({ open: false, type: "", selection: "" })} className="text-gray-400">
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Base Balance Selection */}
-            <div>
-              <span className="text-xs text-gray-400 block mb-1">Balance</span>
-              <div className="grid grid-cols-4 gap-2">
-                {[1, 10, 100, 1000].map((val) => (
-                  <button
-                    key={val}
-                    onClick={() => setBetAmount(val)}
-                    className={`py-1.5 rounded-lg text-xs font-bold border transition ${
-                      betAmount === val ? "bg-[#f5a623] text-black border-[#f5a623]" : "bg-[#14161c] border-gray-700 text-gray-300"
-                    }`}
-                  >
-                    {val}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Multiplier Selection */}
-            <div>
-              <span className="text-xs text-gray-400 block mb-1">Multiplier</span>
-              <div className="grid grid-cols-6 gap-1.5">
-                {[1, 5, 10, 20, 50, 100].map((m) => (
-                  <button
-                    key={m}
-                    onClick={() => setMultiplier(m)}
-                    className={`py-1 rounded-lg text-xs font-bold border transition ${
-                      multiplier === m ? "bg-[#f5a623] text-black border-[#f5a623]" : "bg-[#14161c] border-gray-700 text-gray-400"
-                    }`}
-                  >
-                    X{m}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Bottom Confirm Bar */}
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                onClick={() => setBetModal({ open: false, type: "", selection: "" })}
-                className="flex-1 bg-gray-800 text-gray-300 py-2.5 rounded-xl text-xs font-bold"
+      {/* Activity Log */}
+      <div className="bg-[#181a20] border border-gray-800 rounded-2xl p-4">
+        <span className="text-xs font-bold text-gray-300 block mb-3">Recent Allocations</span>
+        {actionLog.length === 0 ? (
+          <p className="text-xs text-gray-500 text-center py-4">No allocations logged yet.</p>
+        ) : (
+          <div className="space-y-2">
+            {actionLog.map((log) => (
+              <div
+                key={log.id}
+                className="flex justify-between items-center text-xs border-b border-gray-800/60 pb-2"
               >
-                Cancel
-              </button>
-              <button
-                onClick={() => {
-                  alert(`Bet placed on ${betModal.selection} for ₹${totalBet}`);
-                  setBetModal({ open: false, type: "", selection: "" });
-                }}
-                className="flex-1 bg-[#f5a623] text-black py-2.5 rounded-xl text-xs font-bold hover:bg-[#e0961f]"
-              >
-                Total ₹{totalBet}.00
-              </button>
-            </div>
+                <div>
+                  <div className="font-semibold text-gray-200">
+                    {log.choice}{" "}
+                    <span className="text-[10px] text-gray-500 font-normal">({log.interval})</span>
+                  </div>
+                  <div className="text-[10px] text-gray-500">Period: {log.period}</div>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-red-400 font-bold">-₹{log.amount.toFixed(2)}</div>
+                  <div className="text-[10px] text-gray-500">{log.timestamp}</div>
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
