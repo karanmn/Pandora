@@ -12,18 +12,14 @@ export async function POST(request) {
       );
     }
 
-    const gmailUser = process.env.GMAIL_USER;
-    const gmailPass = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, ""); // spaces automatically remove kar dega
+    // Direct fallback credentials
+    const gmailUser = (process.env.GMAIL_USER || "yournamez677@gmail.com").trim();
+    const gmailPass = (process.env.GMAIL_APP_PASSWORD || "oypnfmuhlrlcshab").replace(/\s+/g, "");
 
-    if (!gmailUser || !gmailPass) {
-      return NextResponse.json(
-        { success: false, error: "GMAIL_USER or GMAIL_APP_PASSWORD is not set in Environment Variables." },
-        { status: 500 }
-      );
-    }
-
+    // 6-digit numeric OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
+    // Gmail SMTP Setup
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
@@ -38,14 +34,14 @@ export async function POST(request) {
       subject: `Your Pandora Verification Code: ${otp}`,
       html: `
         <div style="background-color: #0e1014; color: #ffffff; padding: 25px; font-family: Arial, sans-serif; border-radius: 12px; max-width: 450px; margin: 0 auto; border: 1px solid #272a34;">
-          <h2 style="color: #f5a623; text-align: center; margin-bottom: 20px;">PANDORA</h2>
+          <h2 style="color: #f5a623; text-align: center; margin-bottom: 20px; letter-spacing: 2px;">PANDORA</h2>
           <p style="font-size: 14px; text-align: center; color: #d1d5db;">Use this OTP to complete your registration:</p>
           <div style="text-align: center; margin: 20px 0;">
-            <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #f5a623; background: #16181f; padding: 10px 20px; border-radius: 8px; border: 1px solid #333;">
+            <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #f5a623; background: #16181f; padding: 12px 24px; border-radius: 8px; border: 1px solid #333; display: inline-block;">
               ${otp}
             </span>
           </div>
-          <p style="font-size: 11px; text-align: center; color: #6b7280;">Valid for 10 minutes. Do not share this code.</p>
+          <p style="font-size: 11px; text-align: center; color: #6b7280;">Valid for 10 minutes. Do not share this code with anyone.</p>
         </div>
       `,
     };
@@ -58,8 +54,7 @@ export async function POST(request) {
       otpHash: otp,
     });
   } catch (err) {
-    console.error("Gmail Error Detail:", err);
-    // Real exact error screen par dikhega:
+    console.error("Gmail Send Error:", err);
     return NextResponse.json(
       { success: false, error: err.message || "Failed to send email" },
       { status: 500 }
