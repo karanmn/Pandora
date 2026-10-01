@@ -1,100 +1,131 @@
 "use client";
-import { useState } from "react";
+
+import React, { useState, useEffect, Suspense } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { supabase } from "@/app/lib/supabase";
 
-export default function SignUpPage() {
+function SignUpContent() {
   const router = useRouter();
-  const [showPass, setShowPass] = useState(false);
-  const [showConfirmPass, setShowConfirmPass] = useState(false);
+  const searchParams = useSearchParams();
+
+  const [showPass, setShowPass] = useState<boolean>(false);
+  const [showConfirmPass, setShowConfirmPass] = useState<boolean>(false);
 
   // Form Fields
-  const [inviteCode, setInviteCode] = useState("");
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
-  const [otp, setOtp] = useState("");
-  const [serverOtp, setServerOtp] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState<string>("");
+  const [name, setName] = useState<string>("");
+  const [phone, setPhone] = useState<string>("");
+  const [email, setEmail] = useState<string>("");
+  const [otp, setOtp] = useState<string>("");
+  const [serverOtp, setServerOtp] = useState<string>("");
+  const [password, setPassword] = useState<string>("");
+  const [confirmPassword, setConfirmPassword] = useState<string>("");
 
   // States
-  const [loading, setLoading] = useState(false);
-  const [otpLoading, setOtpLoading] = useState(false);
-  const [otpSent, setOtpSent] = useState(false);
-  const [errorMsg, setErrorMsg] = useState("");
-  const [successMsg, setSuccessMsg] = useState("");
+  const [loading, setLoading] = useState<boolean>(false);
+  const [otpLoading, setOtpLoading] = useState<boolean>(false);
+  const [otpSent, setOtpSent] = useState<boolean>(false);
+  const [errorMsg, setErrorMsg] = useState<string>("");
+  const [successMsg, setSuccessMsg] = useState<string>("");
+
+  // Auto prefill invite code from referral link
+  useEffect(() => {
+    const code = searchParams.get("inviteCode");
+    if (code) {
+      setInviteCode(code);
+    }
+  }, [searchParams]);
 
   // Send OTP Function
   const handleSendOtp = async () => {
     if (!email || !email.includes("@")) {
-      setErrorMsg("Please enter a valid email address first.");
+      setErrorMsg("Kripya ek valid email address enter karein.");
       return;
     }
     setErrorMsg("");
+    setSuccessMsg("");
     setOtpLoading(true);
 
     try {
       const res = await fetch("/api/auth/send-otp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim().toLowerCase() }),
       });
+
       const data = await res.json();
 
       if (data.success) {
         setOtpSent(true);
-        setServerOtp(data.debugOtp);
-        setSuccessMsg(`OTP sent! (Test OTP: ${data.debugOtp})`);
+        setServerOtp(data.otpHash);
+        setSuccessMsg("OTP aapke email par bhej diya gaya hai!");
       } else {
-        setErrorMsg(data.error || "Failed to send OTP");
+        setErrorMsg(data.error || "OTP bhejne me dikkat aayi.");
       }
     } catch (err) {
-      setErrorMsg("Failed to connect to OTP service.");
+      setErrorMsg("Email service se connection fail ho gaya.");
     } finally {
       setOtpLoading(false);
     }
   };
 
-  // Handle Registration
-  const handleSubmit = async (e) => {
+  // Handle Sign Up & Referral Chain Link
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
 
     if (password !== confirmPassword) {
-      setErrorMsg("Passwords do not match!");
+      setErrorMsg("Dono password match nahi ho rahe hain!");
       return;
     }
 
-    if (serverOtp && otp.trim() !== serverOtp.trim()) {
-      setErrorMsg("Invalid OTP entered!");
+    if (!serverOtp || otp.trim() !== serverOtp.trim()) {
+      setErrorMsg("Galat OTP! Kripya email check karein.");
       return;
     }
 
     setLoading(true);
 
     try {
-      // 1. Check if Phone or Email already registered
+      // 1. Check Phone or Email exists
       const { data: existingUser } = await supabase
         .from("users")
         .select("id")
-        .or(`phone.eq.${phone.trim()},email.eq.${email.trim()}`)
+        .or(`phone.eq.${phone.trim()},email.eq.${email.trim().toLowerCase()}`)
         .maybeSingle();
 
       if (existingUser) {
-        setErrorMsg("Phone number or Email already registered.");
+        setErrorMsg("Yeh Phone number ya Email pehle se registered hai.");
         setLoading(false);
         return;
       }
 
-      // 2. Generate Random Unique User ID (e.g. EW584920)
-      const generatedUserId = `EW${Math.floor(100000 + Math.random() * 900000)}`;
+      // 2. Check Upline Referral Code valid hai ya nahi
+      let parentReferral = null;
+      if (inviteCode.trim()) {
+        const { data: uplineUser } = await supabase
+          .from("users")
+          .select("user_id")
+          .eq("user_id", inviteCode.trim())
+          .maybeSingle();
 
-      // 3. Insert new user with Referral/Direct Team relationship
-      const { data, error } = await supabase
+        if (uplineUser) {
+          parentReferral = uplineUser.user_id;
+        } else {
+          setErrorMsg("Invite Code invalid hai!");
+          setLoading(false);
+          return;
+        }
+      }
+
+      // 3. Auto Generate Unique EW User ID (e.g. EW84920134)
+      const generatedUserId = `EW${Math.floor(10000000 + Math.random() * 90000000)}`;
+
+      // 4. Save User & Establish Referral Chain
+      const { data: newUser, error: insertError } = await supabase
         .from("users")
         .insert([
           {
@@ -103,35 +134,35 @@ export default function SignUpPage() {
             phone: phone.trim(),
             email: email.trim().toLowerCase(),
             password_hash: password,
-            balance: 100.0, // Registration bonus
-            referred_by: inviteCode.trim() ? inviteCode.trim() : null,
+            balance: 100.0, // Welcome signup bonus
+            referred_by: parentReferral, // Chain connected
           },
         ])
         .select()
         .single();
 
-      if (error) {
-        setErrorMsg(error.message);
+      if (insertError) {
+        setErrorMsg(insertError.message);
         setLoading(false);
         return;
       }
 
-      // 4. Save session and redirect
+      // 5. Save local session
       localStorage.setItem(
         "pandora_user",
         JSON.stringify({
-          id: data.id,
-          user_id: data.user_id,
-          name: data.name,
-          balance: data.balance,
+          id: newUser.id,
+          user_id: newUser.user_id,
+          name: newUser.name,
+          balance: newUser.balance,
         })
       );
 
-      alert(`Account Created! Your User ID is: ${generatedUserId}`);
+      alert(`Account Ban Gaya! Aapka User ID hai: ${generatedUserId}`);
       router.push("/user/select-panel");
     } catch (err) {
       console.error(err);
-      setErrorMsg("Network error. Please try again.");
+      setErrorMsg("Kripya internet check karein.");
     } finally {
       setLoading(false);
     }
@@ -139,12 +170,12 @@ export default function SignUpPage() {
 
   return (
     <div className="min-h-screen bg-[#0e1014] text-white flex flex-col justify-center items-center px-4 py-8">
-      {/* Brand */}
+      {/* Brand Logo */}
       <div className="flex flex-col items-center mb-5">
-        <div className="w-12 h-12 rounded-full border border-teal-500/50 bg-[#161922] flex items-center justify-center mb-1">
+        <div className="w-12 h-12 rounded-full border border-teal-500/50 bg-[#161922] flex items-center justify-center mb-1 shadow-lg shadow-teal-500/10">
           <span className="text-xl">🌐</span>
         </div>
-        <h1 className="text-base font-bold tracking-widest uppercase">Pandora</h1>
+        <h1 className="text-base font-bold tracking-widest uppercase text-gray-200">Pandora</h1>
       </div>
 
       <div className="w-full max-w-sm bg-[#16181f] p-6 rounded-2xl border border-gray-800 shadow-xl">
@@ -292,5 +323,13 @@ export default function SignUpPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignUpPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-[#0e1014] text-white flex items-center justify-center">Loading...</div>}>
+      <SignUpContent />
+    </Suspense>
   );
 }
