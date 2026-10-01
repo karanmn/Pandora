@@ -1,7 +1,7 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import BottomNav from "@/app/components/BottomNav";
+import BottomNav from "../../../components/BottomNav";
 import { LogOut, ArrowDownLeft, ArrowUpRight, ArrowLeftRight } from "lucide-react";
 
 export default function AssetsPage() {
@@ -13,25 +13,40 @@ export default function AssetsPage() {
       <div className="p-4 border-b border-gray-800 bg-[#14161d]">
         <span className="text-xs text-gray-400 block mb-1">Est. Total Wallet</span>
         <div className="flex items-baseline gap-2 mb-4">
-          <span className="text-2xl font-black text-white">121.69</span>
+          <span className="text-2xl font-black text-white">129.69</span>
           <span className="text-xs font-bold text-[#f5a623]">INR</span>
         </div>
 
         {/* Actions: Deposit, Withdraw, P2P, Sign Out */}
         <div className="grid grid-cols-4 gap-2">
-          <button className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-[#252834]">
+          <Link
+            href="/user/crypto/deposit"
+            className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-[#252834] transition"
+          >
             <ArrowDownLeft size={18} className="text-green-400" />
             <span className="text-[10px] text-gray-300">Deposit</span>
-          </button>
-          <button className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-[#252834]">
+          </Link>
+
+          <Link
+            href="/user/crypto/withdraw"
+            className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-[#252834] transition"
+          >
             <ArrowUpRight size={18} className="text-[#f5a623]" />
             <span className="text-[10px] text-gray-300">Withdraw</span>
-          </button>
-          <button className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-[#252834]">
+          </Link>
+
+          <Link
+            href="/user/crypto/p2p"
+            className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-[#252834] transition"
+          >
             <ArrowLeftRight size={18} className="text-blue-400" />
             <span className="text-[10px] text-gray-300">P2P</span>
-          </button>
-          <Link href="/auth/sign-in" className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-red-500/20">
+          </Link>
+
+          <Link
+            href="/auth/sign-in"
+            className="flex flex-col items-center gap-1 p-2 rounded-xl bg-[#1b1e26] hover:bg-red-500/20 transition"
+          >
             <LogOut size={18} className="text-red-400" />
             <span className="text-[10px] text-gray-300">Sign Out</span>
           </Link>
@@ -72,17 +87,17 @@ export default function AssetsPage() {
           <form onSubmit={(e) => { e.preventDefault(); alert("Password updated successfully!"); }} className="space-y-4">
             <div>
               <label className="text-xs text-gray-400 block mb-1">Current Password</label>
-              <input type="password" placeholder="••••••••" required className="w-full bg-[#16181f] border border-gray-700/60 rounded-xl px-3 py-2.5 text-sm focus:border-[#f5a623]" />
+              <input type="password" placeholder="••••••••" required className="w-full bg-[#16181f] border border-gray-700/60 rounded-xl px-3 py-2.5 text-sm focus:border-[#f5a623] outline-none" />
             </div>
             <div>
               <label className="text-xs text-gray-400 block mb-1">New Password</label>
-              <input type="password" placeholder="••••••••" required className="w-full bg-[#16181f] border border-gray-700/60 rounded-xl px-3 py-2.5 text-sm focus:border-[#f5a623]" />
+              <input type="password" placeholder="••••••••" required className="w-full bg-[#16181f] border border-gray-700/60 rounded-xl px-3 py-2.5 text-sm focus:border-[#f5a623] outline-none" />
             </div>
             <div>
               <label className="text-xs text-gray-400 block mb-1">Confirm Password</label>
-              <input type="password" placeholder="••••••••" required className="w-full bg-[#16181f] border border-gray-700/60 rounded-xl px-3 py-2.5 text-sm focus:border-[#f5a623]" />
+              <input type="password" placeholder="••••••••" required className="w-full bg-[#16181f] border border-gray-700/60 rounded-xl px-3 py-2.5 text-sm focus:border-[#f5a623] outline-none" />
             </div>
-            <button type="submit" className="w-full bg-[#f5a623] text-black font-semibold py-3 rounded-xl text-sm transition mt-2">
+            <button type="submit" className="w-full bg-[#f5a623] text-black font-semibold py-3 rounded-xl text-sm transition mt-2 hover:bg-[#e0961f]">
               Change Password
             </button>
           </form>
