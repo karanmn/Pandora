@@ -10,25 +10,25 @@ function SignUpContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [showPass, setShowPass] = useState<boolean>(false);
-  const [showConfirmPass, setShowConfirmPass] = useState<boolean>(false);
+  const [showPass, setShowPass] = useState(false);
+  const [showConfirmPass, setShowConfirmPass] = useState(false);
 
   // Form Fields
-  const [inviteCode, setInviteCode] = useState<string>("");
-  const [name, setName] = useState<string>("");
-  const [phone, setPhone] = useState<string>("");
-  const [email, setEmail] = useState<string>("");
-  const [otp, setOtp] = useState<string>("");
-  const [serverOtp, setServerOtp] = useState<string>("");
-  const [password, setPassword] = useState<string>("");
-  const [confirmPassword, setConfirmPassword] = useState<string>("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [otp, setOtp] = useState("");
+  const [serverOtp, setServerOtp] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   // States
-  const [loading, setLoading] = useState<boolean>(false);
-  const [otpLoading, setOtpLoading] = useState<boolean>(false);
-  const [otpSent, setOtpSent] = useState<boolean>(false);
-  const [errorMsg, setErrorMsg] = useState<string>("");
-  const [successMsg, setSuccessMsg] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [otpLoading, setOtpLoading] = useState(false);
+  const [otpSent, setOtpSent] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
+  const [successMsg, setSuccessMsg] = useState("");
 
   // Auto prefill invite code from referral link
   useEffect(() => {
@@ -72,7 +72,7 @@ function SignUpContent() {
   };
 
   // Handle Sign Up & Referral Chain Link
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg("");
     setSuccessMsg("");
@@ -103,7 +103,7 @@ function SignUpContent() {
         return;
       }
 
-      // 2. Check Upline Referral Code valid hai ya nahi
+      // 2. Check Upline Referral Code
       let parentReferral = null;
       if (inviteCode.trim()) {
         const { data: uplineUser } = await supabase
@@ -121,7 +121,7 @@ function SignUpContent() {
         }
       }
 
-      // 3. Auto Generate Unique EW User ID (e.g. EW84920134)
+      // 3. Auto Generate Unique EW User ID
       const generatedUserId = `EW${Math.floor(10000000 + Math.random() * 90000000)}`;
 
       // 4. Save User & Establish Referral Chain
@@ -134,8 +134,8 @@ function SignUpContent() {
             phone: phone.trim(),
             email: email.trim().toLowerCase(),
             password_hash: password,
-            balance: 100.0, // Welcome signup bonus
-            referred_by: parentReferral, // Chain connected
+            balance: 100.0,
+            referred_by: parentReferral,
           },
         ])
         .select()
