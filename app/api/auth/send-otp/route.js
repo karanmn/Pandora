@@ -12,20 +12,28 @@ export async function POST(request) {
       );
     }
 
-    // 6-digit random numeric OTP
+    const gmailUser = process.env.GMAIL_USER;
+    const gmailPass = process.env.GMAIL_APP_PASSWORD?.replace(/\s+/g, ""); // spaces automatically remove kar dega
+
+    if (!gmailUser || !gmailPass) {
+      return NextResponse.json(
+        { success: false, error: "GMAIL_USER or GMAIL_APP_PASSWORD is not set in Environment Variables." },
+        { status: 500 }
+      );
+    }
+
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
-    // Gmail SMTP Transporter
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.GMAIL_USER || "your-email@gmail.com", // Aapka Gmail address
-        pass: process.env.GMAIL_APP_PASSWORD || "abcd efgh ijkl mnop", // 16-digit App Password
+        user: gmailUser,
+        pass: gmailPass,
       },
     });
 
     const mailOptions = {
-      from: `"Pandora Security" <${process.env.GMAIL_USER || "your-email@gmail.com"}>`,
+      from: `"Pandora Security" <${gmailUser}>`,
       to: email.trim().toLowerCase(),
       subject: `Your Pandora Verification Code: ${otp}`,
       html: `
@@ -47,12 +55,13 @@ export async function POST(request) {
     return NextResponse.json({
       success: true,
       message: "OTP sent successfully to your email!",
-      otpHash: otp, // Frontend validation ke liye
+      otpHash: otp,
     });
   } catch (err) {
-    console.error("Gmail SMTP Error:", err);
+    console.error("Gmail Error Detail:", err);
+    // Real exact error screen par dikhega:
     return NextResponse.json(
-      { success: false, error: "Failed to send email. Check credentials." },
+      { success: false, error: err.message || "Failed to send email" },
       { status: 500 }
     );
   }
