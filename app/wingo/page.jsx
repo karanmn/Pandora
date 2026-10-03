@@ -1,1301 +1,1739 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
-  Wallet,
-  X,
-  AlertCircle,
-  Trophy,
+  ChevronLeft,
+  ChevronRight,
   Clock3,
+  Info,
+  Minus,
+  Plus,
+  RefreshCw,
+  Volume2,
+  WalletCards,
+  X,
 } from "lucide-react";
 
-const WIN_GO_MODES = [
-  { label: "30 Sec", duration: 30 },
-  { label: "1 Min", duration: 60 },
-  { label: "3 Min", duration: 180 },
-  { label: "5 Min", duration: 300 },
+/* =========================================================
+   CONFIG
+========================================================= */
+
+const MODES = [
+  { label: "30 Sec", short: "30 Sec", duration: 30 },
+  { label: "1 Min", short: "1 Min", duration: 60 },
+  { label: "3 Min", short: "3 Min", duration: 180 },
+  { label: "5 Min", short: "5 Min", duration: 300 },
 ];
 
-const MULTIPLIERS = [1, 5, 10, 20, 50, 100];
 const BASE_AMOUNTS = [1, 10, 100, 1000];
+const MULTIPLIERS = [1, 5, 10, 20, 50, 100];
+
+const PAGE_SIZE = 10;
 
 /*
-  DEMO / VIRTUAL MONEY PAYOUTS
-
-  These are intentionally kept in the client for this demo.
-  A real-money implementation should NOT trust client-side
-  result generation or wallet settlement.
+  Virtual/demo payout values.
+  These are only for the simulated game.
 */
 const PAYOUTS = {
-  Green: 2,
-  Red: 2,
-  Violet: 4.5,
-  Big: 2,
-  Small: 2,
+  Color: {
+    Green: 2,
+    Red: 2,
+    Violet: 4.5,
+  },
+  Size: {
+    Big: 2,
+    Small: 2,
+  },
   Number: 9,
 };
 
-const WINNING_FEE_RATE = 0.003; // 0.3%
+const WINNING_FEE = 0.003;
 
-function getNumberColor(number) {
-  if (number === 0 || number === 5) return "Violet";
-  return number % 2 === 0 ? "Red" : "Green";
-}
+/* =========================================================
+   GAME HELPERS
+========================================================= */
 
-function getColorClass(color) {
-  if (color === "Green") return "bg-emerald-500";
-  if (color === "Red") return "bg-rose-500";
-  return "bg-purple-500";
-}
-
-function getBigSmall(number) {
-  return number >= 5 ? "Big" : "Small";
-}
-
-function getLocalDatePart(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}${month}${day}`;
-}
-
-function getRoundInfo(duration) {
+function getPeriodInfo(duration) {
   const now = new Date();
 
-  const epochSeconds = Math.floor(now.getTime() / 1000);
+  /*
+    Use local epoch seconds for stable round boundaries.
+  */
+  const epoch = Math.floor(now.getTime() / 1000);
 
-  const roundIndex = Math.floor(epochSeconds / duration);
+  const roundNumber = Math.floor(epoch / duration);
 
-  const nextRoundSeconds =
-    (roundIndex + 1) * duration - epochSeconds;
+  const elapsed = epoch % duration;
 
-  const periodId =
-    getLocalDatePart(now) +
-    String(roundIndex + 1).padStart(6, "0");
+  const remaining =
+    duration - elapsed;
+
+  const year = now.getFullYear();
+  const month = String(
+    now.getMonth() + 1
+  ).padStart(2, "0");
+
+  const day = String(
+    now.getDate()
+  ).padStart(2, "0");
+
+  const datePart =
+    `${year}${month}${day}`;
+
+  const period =
+    `${datePart}${String(
+      roundNumber + 1
+    ).padStart(6, "0")}`;
 
   return {
-    periodId,
-    secondsRemaining: nextRoundSeconds,
+    period,
+    remaining,
+    roundNumber,
   };
 }
 
-function generateRandomNumber() {
-  /*
-    Uniform random number 0-9.
-
-    For a demo game this is sufficient.
-    For any real-money system, this must be generated
-    and verified server-side.
-  */
+function randomNumber() {
   return Math.floor(Math.random() * 10);
 }
 
-export default function WinGoGamePage() {
-  const [activeModeIndex, setActiveModeIndex] = useState(0);
+function getColor(number) {
+  if (number === 0 || number === 5) {
+    return "Violet";
+  }
 
-  const [balance, setBalance] = useState(133.56);
+  return number % 2 === 0
+    ? "Red"
+    : "Green";
+}
 
-  const [secondsRemaining, setSecondsRemaining] = useState(30);
+function getSize(number) {
+  return number >= 5
+    ? "Big"
+    : "Small";
+}
 
-  const [periodId, setPeriodId] = useState("");
+function getColorClass(color) {
+  if (color === "Green") {
+    return "text-[#48c98b]";
+  }
 
-  const [currentResult, setCurrentResult] = useState(null);
+  if (color === "Red") {
+    return "text-[#f05d68]";
+  }
 
-  const [isSheetOpen, setIsSheetOpen] = useState(false);
+  return "text-[#a45cff]";
+}
 
-  const [betSelection, setBetSelection] = useState(null);
+function getBallClass(number) {
+  const color = getColor(number);
 
-  const [betType, setBetType] = useState("");
+  if (color === "Green") {
+    return "bg-gradient-to-br from-[#8be0ad] via-[#42bd80] to-[#168452] border-[#8ce4b2]";
+  }
 
-  const [baseUnit, setBaseUnit] = useState(10);
+  if (color === "Red") {
+    return "bg-gradient-to-br from-[#ff979c] via-[#f05760] to-[#b92e39] border-[#ff9b9f]";
+  }
 
-  const [multiplier, setMultiplier] = useState(1);
+  return "bg-gradient-to-br from-[#d398ff] via-[#8d3fdb] to-[#512087] border-[#d2a1ff]";
+}
 
-  const [errorMsg, setErrorMsg] = useState("");
+function money(value) {
+  return `₹${Number(value).toFixed(2)}`;
+}
 
-  const [successToast, setSuccessToast] = useState("");
+/* =========================================================
+   MAIN COMPONENT
+========================================================= */
 
-  const [resultToast, setResultToast] = useState("");
+export default function WinGoPage() {
+  const [modeIndex, setModeIndex] =
+    useState(0);
 
-  const [pendingBets, setPendingBets] = useState([]);
+  const mode = MODES[modeIndex];
 
-  const [historyData, setHistoryData] = useState([]);
+  const [balance, setBalance] =
+    useState(133.56);
 
-  const [lastSettledPeriod, setLastSettledPeriod] = useState(null);
+  const [period, setPeriod] =
+    useState("");
 
-  const initializedRef = useRef(false);
+  const [remaining, setRemaining] =
+    useState(mode.duration);
 
-  const previousPeriodRef = useRef(null);
+  const [results, setResults] =
+    useState([]);
 
-  const currentDuration =
-    WIN_GO_MODES[activeModeIndex].duration;
+  const [bets, setBets] =
+    useState([]);
 
-  const totalBetAmount =
-    baseUnit * multiplier;
+  const [myHistory, setMyHistory] =
+    useState([]);
 
-  const isLocked =
-    secondsRemaining <= 5;
+  const [lastResult, setLastResult] =
+    useState(null);
 
-  /*
-    -----------------------------------------
-    LOAD DEMO GAME DATA
-    -----------------------------------------
-  */
+  const [modal, setModal] =
+    useState(null);
+
+  const [baseAmount, setBaseAmount] =
+    useState(1);
+
+  const [quantity, setQuantity] =
+    useState(1);
+
+  const [multiplier, setMultiplier] =
+    useState(1);
+
+  const [tab, setTab] =
+    useState("game");
+
+  const [page, setPage] =
+    useState(1);
+
+  const [toast, setToast] =
+    useState("");
+
+  const [announcement, setAnnouncement] =
+    useState(
+      "Welcome to Equra Play!"
+    );
+
+  const previousRoundRef =
+    useRef(null);
+
+  const initializedRef =
+    useRef(false);
+
+  /* =======================================================
+     TOTAL BET
+  ======================================================= */
+
+  const totalAmount = useMemo(() => {
+    return (
+      baseAmount *
+      quantity *
+      multiplier
+    );
+  }, [
+    baseAmount,
+    quantity,
+    multiplier,
+  ]);
+
+  /* =======================================================
+     LOAD DEMO DATA
+  ======================================================= */
 
   useEffect(() => {
-    const storedUser =
-      localStorage.getItem("pandora_user");
+    try {
+      const storedUser =
+        localStorage.getItem(
+          "pandora_user"
+        );
 
-    if (storedUser) {
-      try {
-        const parsed = JSON.parse(storedUser);
+      if (storedUser) {
+        const user =
+          JSON.parse(storedUser);
 
-        if (parsed.balance !== undefined) {
-          const parsedBalance =
-            parseFloat(parsed.balance);
-
-          if (!Number.isNaN(parsedBalance)) {
-            setBalance(parsedBalance);
-          }
+        if (
+          user.balance !== undefined &&
+          !Number.isNaN(
+            Number(user.balance)
+          )
+        ) {
+          setBalance(
+            Number(user.balance)
+          );
         }
-      } catch (error) {
-        console.error(error);
       }
-    }
 
-    const storedHistory =
-      localStorage.getItem("wingo_demo_history");
+      const storedResults =
+        localStorage.getItem(
+          "wingo_demo_results"
+        );
 
-    if (storedHistory) {
-      try {
+      if (storedResults) {
+        const parsed =
+          JSON.parse(storedResults);
+
+        if (Array.isArray(parsed)) {
+          setResults(parsed);
+        }
+      }
+
+      const storedHistory =
+        localStorage.getItem(
+          "wingo_demo_my_history"
+        );
+
+      if (storedHistory) {
         const parsed =
           JSON.parse(storedHistory);
 
         if (Array.isArray(parsed)) {
-          setHistoryData(parsed);
+          setMyHistory(parsed);
         }
-      } catch (error) {
-        console.error(error);
       }
+    } catch (error) {
+      console.error(error);
     }
 
     initializedRef.current = true;
   }, []);
 
-  /*
-    -----------------------------------------
-    SAVE BALANCE
-    -----------------------------------------
-  */
+  /* =======================================================
+     SAVE BALANCE
+  ======================================================= */
 
-  const saveBalance = useCallback((newBalance) => {
-    setBalance(newBalance);
+  const updateBalance = useCallback(
+    (value) => {
+      const next =
+        Number(value.toFixed(2));
 
-    const stored =
-      localStorage.getItem("pandora_user");
+      setBalance(next);
 
-    if (stored) {
       try {
-        const parsed =
-          JSON.parse(stored);
+        const stored =
+          localStorage.getItem(
+            "pandora_user"
+          );
 
-        parsed.balance = newBalance;
+        if (stored) {
+          const user =
+            JSON.parse(stored);
 
+          user.balance = next;
+
+          localStorage.setItem(
+            "pandora_user",
+            JSON.stringify(user)
+          );
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    []
+  );
+
+  /* =======================================================
+     SAVE RESULTS
+  ======================================================= */
+
+  const saveResults = useCallback(
+    (items) => {
+      setResults(items);
+
+      try {
         localStorage.setItem(
-          "pandora_user",
-          JSON.stringify(parsed)
+          "wingo_demo_results",
+          JSON.stringify(items)
         );
       } catch (error) {
         console.error(error);
       }
-    }
-  }, []);
+    },
+    []
+  );
 
-  /*
-    -----------------------------------------
-    SAVE HISTORY
-    -----------------------------------------
-  */
+  /* =======================================================
+     SAVE MY HISTORY
+  ======================================================= */
 
-  const saveHistory = useCallback((newHistory) => {
-    setHistoryData(newHistory);
+  const saveMyHistory = useCallback(
+    (items) => {
+      setMyHistory(items);
 
-    localStorage.setItem(
-      "wingo_demo_history",
-      JSON.stringify(newHistory)
-    );
-  }, []);
+      try {
+        localStorage.setItem(
+          "wingo_demo_my_history",
+          JSON.stringify(items)
+        );
+      } catch (error) {
+        console.error(error);
+      }
+    },
+    []
+  );
 
-  /*
-    -----------------------------------------
-    SETTLE ROUND
-    -----------------------------------------
-  */
+  /* =======================================================
+     TOAST
+  ======================================================= */
+
+  const showToast = useCallback(
+    (message) => {
+      setToast(message);
+
+      setTimeout(() => {
+        setToast("");
+      }, 2500);
+    },
+    []
+  );
+
+  /* =======================================================
+     SETTLE ROUND
+  ======================================================= */
 
   const settleRound = useCallback(
-    (settledPeriod, bets) => {
-      if (!settledPeriod || !bets.length) {
+    (settledPeriod, roundBets) => {
+      if (!settledPeriod) {
         return;
       }
 
       /*
-        Generate ONE result for the entire round.
-
-        Every bet in this period receives the
-        exact same result.
+        ONE random result for the entire round.
       */
-      const resultNumber =
-        generateRandomNumber();
+      const number =
+        randomNumber();
 
-      const resultColor =
-        getNumberColor(resultNumber);
+      const color =
+        getColor(number);
 
-      const resultSize =
-        getBigSmall(resultNumber);
+      const size =
+        getSize(number);
 
       const result = {
         period: settledPeriod,
-        number: resultNumber,
-        color: resultColor,
-        bigSmall: resultSize,
-        timestamp: Date.now(),
+        number,
+        color,
+        size,
+        createdAt: Date.now(),
       };
 
-      setCurrentResult(result);
-      setLastSettledPeriod(settledPeriod);
+      setLastResult(result);
 
-      let balanceChange = 0;
+      /*
+        Put newest result first.
+      */
+      setResults((current) => {
+        const next = [
+          result,
+          ...current.filter(
+            (item) =>
+              item.period !==
+              settledPeriod
+          ),
+        ].slice(0, 100);
 
-      const settledBets = bets.map((bet) => {
-        let won = false;
+        try {
+          localStorage.setItem(
+            "wingo_demo_results",
+            JSON.stringify(next)
+          );
+        } catch {}
 
-        if (bet.type === "Number") {
-          won =
-            Number(bet.selection) === resultNumber;
-        }
-
-        if (bet.type === "Color") {
-          won =
-            bet.selection === resultColor;
-        }
-
-        if (bet.type === "Size") {
-          won =
-            bet.selection === resultSize;
-        }
-
-        if (!won) {
-          return {
-            ...bet,
-            resultNumber,
-            resultColor,
-            resultSize,
-            status: "LOSS",
-            payout: 0,
-            fee: 0,
-            returned: 0,
-          };
-        }
-
-        const grossPayout =
-          bet.amount *
-          PAYOUTS[bet.type];
-
-        /*
-          0.3% deduction from winning payout.
-        */
-        const fee =
-          grossPayout *
-          WINNING_FEE_RATE;
-
-        const netPayout =
-          grossPayout - fee;
-
-        /*
-          Stake was already removed when the
-          bet was placed.
-
-          Therefore only the payout is added now.
-        */
-        balanceChange += netPayout;
-
-        return {
-          ...bet,
-          resultNumber,
-          resultColor,
-          resultSize,
-          status: "WIN",
-          payout: grossPayout,
-          fee,
-          returned: netPayout,
-        };
+        return next;
       });
 
-      if (balanceChange !== 0) {
-        const newBalance =
-          parseFloat(
-            (balance + balanceChange).toFixed(2)
-          );
+      /*
+        Settle user's bets.
+      */
+      if (roundBets.length === 0) {
+        return;
+      }
 
-        saveBalance(newBalance);
+      let totalReturned = 0;
+
+      const settled = roundBets.map(
+        (bet) => {
+          let won = false;
+
+          if (bet.type === "Color") {
+            won =
+              bet.selection === color;
+          }
+
+          if (bet.type === "Size") {
+            won =
+              bet.selection === size;
+          }
+
+          if (bet.type === "Number") {
+            won =
+              Number(bet.selection) ===
+              number;
+          }
+
+          if (!won) {
+            return {
+              ...bet,
+              resultNumber: number,
+              resultColor: color,
+              resultSize: size,
+              status: "LOSS",
+              grossPayout: 0,
+              fee: 0,
+              netPayout: 0,
+            };
+          }
+
+          let multiplierValue;
+
+          if (bet.type === "Number") {
+            multiplierValue =
+              PAYOUTS.Number;
+          } else if (
+            bet.type === "Color"
+          ) {
+            multiplierValue =
+              PAYOUTS.Color[
+                bet.selection
+              ];
+          } else {
+            multiplierValue =
+              PAYOUTS.Size[
+                bet.selection
+              ];
+          }
+
+          const gross =
+            bet.amount *
+            multiplierValue;
+
+          const fee =
+            gross *
+            WINNING_FEE;
+
+          const net =
+            gross - fee;
+
+          totalReturned += net;
+
+          return {
+            ...bet,
+            resultNumber: number,
+            resultColor: color,
+            resultSize: size,
+            status: "WIN",
+            grossPayout: gross,
+            fee,
+            netPayout: net,
+          };
+        }
+      );
+
+      /*
+        Stake was already deducted when
+        the bet was placed.
+
+        Only winning payouts are returned.
+      */
+      if (totalReturned > 0) {
+        updateBalance(
+          balance + totalReturned
+        );
       }
 
       /*
-        Add actual result to game history.
+        Add to My History.
       */
-      const historyItem = {
-        period: settledPeriod,
-        number: resultNumber,
-        bigSmall: resultSize,
-        color: getColorClass(resultColor),
-        colorName: resultColor,
-      };
+      setMyHistory((current) => {
+        const next = [
+          ...settled,
+          ...current,
+        ].slice(0, 200);
 
-      setHistoryData((previous) => {
-        const updated = [
-          historyItem,
-          ...previous.filter(
-            (item) =>
-              item.period !== settledPeriod
-          ),
-        ].slice(0, 20);
+        try {
+          localStorage.setItem(
+            "wingo_demo_my_history",
+            JSON.stringify(next)
+          );
+        } catch {}
 
-        localStorage.setItem(
-          "wingo_demo_history",
-          JSON.stringify(updated)
-        );
-
-        return updated;
+        return next;
       });
 
-      /*
-        Show result notification.
-      */
       const wins =
-        settledBets.filter(
-          (bet) => bet.status === "WIN"
+        settled.filter(
+          (item) =>
+            item.status === "WIN"
         ).length;
 
       const losses =
-        settledBets.filter(
-          (bet) => bet.status === "LOSS"
+        settled.filter(
+          (item) =>
+            item.status === "LOSS"
         ).length;
 
-      if (wins > 0) {
-        setResultToast(
-          `Result ${resultNumber} • ${resultColor} • ${resultSize} • ${wins} WIN`
-        );
-      } else {
-        setResultToast(
-          `Result ${resultNumber} • ${resultColor} • ${resultSize} • ${losses} LOSS`
-        );
-      }
-
-      setTimeout(() => {
-        setResultToast("");
-      }, 5000);
-
-      /*
-        Clear bets because this round has settled.
-      */
-      setPendingBets([]);
-
-      return {
-        result,
-        settledBets,
-      };
+      showToast(
+        `${number} • ${color} • ${size} — ${wins} WIN / ${losses} LOSS`
+      );
     },
-    [balance, saveBalance]
+    [
+      balance,
+      showToast,
+      updateBalance,
+    ]
   );
 
-  /*
-    -----------------------------------------
-    CLOCK + ROUND DETECTION
-    -----------------------------------------
-  */
+  /* =======================================================
+     CLOCK
+  ======================================================= */
 
   useEffect(() => {
-    const updateClock = () => {
+    let previousRound =
+      previousRoundRef.current;
+
+    const tick = () => {
       const info =
-        getRoundInfo(currentDuration);
+        getPeriodInfo(
+          mode.duration
+        );
 
-      setSecondsRemaining(
-        info.secondsRemaining
-      );
+      setPeriod(info.period);
+      setRemaining(info.remaining);
 
-      setPeriodId(info.periodId);
-
-      /*
-        Detect transition from previous round
-        to a new round.
-      */
       if (
         initializedRef.current &&
-        previousPeriodRef.current &&
-        previousPeriodRef.current !==
-          info.periodId
+        previousRound &&
+        previousRound !== info.period
       ) {
-        setPendingBets((currentBets) => {
-          if (currentBets.length > 0) {
+        /*
+          Capture bets belonging to the
+          round that just ended.
+        */
+        setBets((current) => {
+          const expired =
+            current.filter(
+              (bet) =>
+                bet.period ===
+                previousRound
+            );
+
+          if (expired.length > 0) {
             settleRound(
-              previousPeriodRef.current,
-              currentBets
+              previousRound,
+              expired
             );
           }
 
-          return currentBets;
+          return current.filter(
+            (bet) =>
+              bet.period !==
+              previousRound
+          );
         });
       }
 
-      previousPeriodRef.current =
-        info.periodId;
+      previousRound =
+        info.period;
+
+      previousRoundRef.current =
+        info.period;
     };
 
-    updateClock();
+    tick();
 
     const timer =
-      setInterval(updateClock, 250);
+      setInterval(
+        tick,
+        250
+      );
 
-    return () => clearInterval(timer);
+    return () =>
+      clearInterval(timer);
   }, [
-    currentDuration,
+    mode.duration,
     settleRound,
   ]);
 
-  /*
-    -----------------------------------------
-    FORMAT TIMER
-    -----------------------------------------
-  */
+  /* =======================================================
+     RESET MODE
+  ======================================================= */
 
-  const formatTime = (totalSec) => {
-    const minutes =
-      Math.floor(totalSec / 60);
+  const changeMode = (index) => {
+    setModeIndex(index);
 
-    const seconds =
-      totalSec % 60;
-
-    return `${String(minutes).padStart(
-      2,
-      "0"
-    )} : ${String(seconds).padStart(
-      2,
-      "0"
-    )}`;
-  };
-
-  /*
-    -----------------------------------------
-    OPEN BETTING SHEET
-    -----------------------------------------
-  */
-
-  const handleOpenSheet = (
-    type,
-    value
-  ) => {
-    if (isLocked) {
-      setErrorMsg(
-        "Round is locked for the last 5 seconds!"
-      );
-
-      setTimeout(
-        () => setErrorMsg(""),
-        2500
-      );
-
-      return;
-    }
-
-    setBetType(type);
-    setBetSelection(value);
-    setIsSheetOpen(true);
-  };
-
-  /*
-    -----------------------------------------
-    PLACE BET
-    -----------------------------------------
-  */
-
-  const handleConfirmBet = () => {
-    if (isLocked) {
-      setErrorMsg(
-        "Time expired! Cannot place order now."
-      );
-
-      return;
-    }
-
-    if (!periodId) {
-      setErrorMsg(
-        "Round is not ready yet."
-      );
-
-      return;
-    }
-
-    if (balance < totalBetAmount) {
-      setErrorMsg(
-        "Insufficient virtual balance!"
-      );
-
-      return;
-    }
+    setModal(null);
 
     /*
-      IMPORTANT:
-      Deduct stake immediately.
-
-      If bet loses:
-        nothing is returned.
-
-      If bet wins:
-        payout is added after settlement.
+      New mode means a different round clock.
     */
-    const newBalance =
-      parseFloat(
-        (
-          balance -
-          totalBetAmount
-        ).toFixed(2)
+    previousRoundRef.current =
+      null;
+
+    setRemaining(
+      MODES[index].duration
+    );
+  };
+
+  /* =======================================================
+     OPEN BET MODAL
+  ======================================================= */
+
+  const openBet = (
+    type,
+    selection
+  ) => {
+    if (remaining <= 5) {
+      showToast(
+        "Betting locked for the final 5 seconds"
       );
 
-    saveBalance(newBalance);
+      return;
+    }
 
-    const newBet = {
+    setModal({
+      type,
+      selection,
+    });
+
+    setBaseAmount(1);
+    setQuantity(1);
+    setMultiplier(1);
+  };
+
+  /* =======================================================
+     PLACE BET
+  ======================================================= */
+
+  const placeBet = () => {
+    if (!modal) {
+      return;
+    }
+
+    if (remaining <= 5) {
+      showToast(
+        "Round is locked"
+      );
+
+      return;
+    }
+
+    if (totalAmount > balance) {
+      showToast(
+        "Insufficient virtual balance"
+      );
+
+      return;
+    }
+
+    const bet = {
       id:
         `${Date.now()}-${Math.random()}`,
 
-      period: periodId,
+      period,
 
-      type: betType,
+      type: modal.type,
 
-      selection: betSelection,
+      selection:
+        modal.selection,
 
-      amount: totalBetAmount,
+      amount: totalAmount,
 
-      multiplier: multiplier,
-
-      placedAt: Date.now(),
+      createdAt: Date.now(),
     };
 
-    setPendingBets((previous) => [
-      ...previous,
-      newBet,
+    /*
+      Deduct stake immediately.
+    */
+    updateBalance(
+      balance - totalAmount
+    );
+
+    setBets((current) => [
+      ...current,
+      bet,
     ]);
 
-    setIsSheetOpen(false);
+    setModal(null);
 
-    setSuccessToast(
-      `₹${totalBetAmount.toFixed(
-        2
-      )} placed on ${betSelection}`
-    );
-
-    setTimeout(
-      () => setSuccessToast(""),
-      3000
+    showToast(
+      `Bet placed • ${money(
+        totalAmount
+      )}`
     );
   };
 
-  /*
-    -----------------------------------------
-    CHANGE GAME MODE
-    -----------------------------------------
-  */
+  /* =======================================================
+     PAGINATION
+  ======================================================= */
 
-  const changeMode = (index) => {
-    setActiveModeIndex(index);
+  const activeList =
+    tab === "game"
+      ? results
+      : myHistory;
 
-    setIsSheetOpen(false);
+  const totalPages =
+    Math.max(
+      1,
+      Math.ceil(
+        activeList.length /
+          PAGE_SIZE
+      )
+    );
 
-    /*
-      Reset current round state because
-      each mode has a different clock.
-    */
-    previousPeriodRef.current = null;
+  const safePage =
+    Math.min(
+      page,
+      totalPages
+    );
 
-    setPendingBets([]);
+  const visibleItems =
+    activeList.slice(
+      (safePage - 1) *
+        PAGE_SIZE,
+      safePage *
+        PAGE_SIZE
+    );
 
-    setCurrentResult(null);
+  const changeTab = (nextTab) => {
+    setTab(nextTab);
+    setPage(1);
   };
+
+  /* =======================================================
+     LAST 5 RESULTS
+  ======================================================= */
+
+  const recentResults =
+    results.slice(0, 5);
+
+  /* =======================================================
+     RENDER
+  ======================================================= */
 
   return (
-    <div className="min-h-screen bg-[#0e1014] text-white pb-12 max-w-md mx-auto relative font-sans select-none">
+    <main className="min-h-screen bg-[#222222] text-white">
 
-      {/* HEADER */}
+      <div className="mx-auto w-full max-w-[430px] min-h-screen bg-[#242424] relative overflow-hidden">
 
-      <header className="sticky top-0 z-40 bg-[#16181f]/90 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-gray-800">
+        {/* =================================================
+            HEADER
+        ================================================= */}
 
-        <Link
-          href="/user/select-panel"
-          className="text-gray-400 hover:text-white"
-        >
-          <ArrowLeft size={20} />
-        </Link>
+        <header className="h-[68px] bg-[#414141] flex items-center justify-between px-5 sticky top-0 z-40 shadow-lg">
 
-        <span className="font-extrabold text-sm tracking-widest uppercase text-[#f5a623]">
-          PANDORA PLAY
-        </span>
+          <Link
+            href="/user/select-panel"
+            className="text-white"
+          >
+            <ArrowLeft
+              size={27}
+              strokeWidth={2}
+            />
+          </Link>
 
-        <div className="w-5" />
+          <div className="font-serif tracking-[0.22em] text-[23px] font-semibold">
+            EQURA PLAY
+          </div>
 
-      </header>
+          <div className="w-[27px]" />
 
-      <div className="p-4 space-y-4">
+        </header>
 
-        {/* WALLET */}
+        <div className="px-5 pb-8">
 
-        <div className="bg-gradient-to-r from-[#d4a046] via-[#c49237] to-[#a37220] text-black p-4 rounded-2xl shadow-xl">
+          {/* =================================================
+              WALLET
+          ================================================= */}
 
-          <div className="flex items-center justify-between">
+          <section className="mt-4 rounded-[32px] bg-gradient-to-br from-[#ffe9a3] via-[#efd17c] to-[#d8ae4b] p-5 text-[#744414] shadow-xl">
 
-            <span className="text-xs font-bold flex items-center gap-1.5 opacity-90">
+            <div className="flex justify-between items-start">
 
-              <Wallet size={15} />
+              <div>
 
-              Virtual Wallet
+                <div className="flex items-center gap-2 text-[15px]">
+                  <WalletCards
+                    size={19}
+                  />
+                  Wallet balance
+                </div>
 
+                <div className="text-[30px] font-bold mt-1">
+                  ₹{balance.toFixed(2)}
+                </div>
+
+              </div>
+
+              <button
+                onClick={() =>
+                  showToast(
+                    "Balance refreshed"
+                  )
+                }
+                className="p-2"
+              >
+                <RefreshCw
+                  size={21}
+                />
+              </button>
+
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 mt-5">
+
+              {/* Demo buttons intentionally do not
+                  perform real transactions. */}
+
+              <button
+                onClick={() =>
+                  showToast(
+                    "Demo deposit screen"
+                  )
+                }
+                className="rounded-lg bg-[#8b5218] py-3 text-white font-semibold"
+              >
+                Deposit
+              </button>
+
+              <button
+                onClick={() =>
+                  showToast(
+                    "Demo withdrawal screen"
+                  )
+                }
+                className="rounded-lg border-2 border-[#8b5218] py-3 text-[#744414] font-semibold"
+              >
+                Withdraw
+              </button>
+
+            </div>
+
+          </section>
+
+          {/* =================================================
+              ANNOUNCEMENT
+          ================================================= */}
+
+          <section className="mt-4 rounded-[20px] bg-gradient-to-r from-[#ffe9a3] to-[#e1bd63] text-[#35250f] px-4 py-3 flex items-center gap-3">
+
+            <Volume2
+              size={21}
+            />
+
+            <span className="text-[15px]">
+              {announcement}
             </span>
 
-            <span className="text-[10px] uppercase font-bold tracking-wider bg-black/20 px-2 py-0.5 rounded-full">
-              DEMO
-            </span>
+          </section>
 
-          </div>
+          {/* =================================================
+              MODE TABS
+          ================================================= */}
 
-          <div className="text-3xl font-black my-2 tracking-tight">
-            ₹{balance.toFixed(2)}
-          </div>
+          <section className="mt-4 rounded-[20px] bg-[#363636] p-2 grid grid-cols-4 gap-1">
 
-          <div className="text-[10px] opacity-70">
-            Virtual/demo balance only
-          </div>
-
-        </div>
-
-        {/* MODES */}
-
-        <div className="grid grid-cols-4 gap-2">
-
-          {WIN_GO_MODES.map(
-            (mode, idx) => {
-
-              const selected =
-                activeModeIndex === idx;
-
-              return (
+            {MODES.map(
+              (item, index) => (
                 <button
-                  key={mode.label}
+                  key={item.label}
                   onClick={() =>
-                    changeMode(idx)
+                    changeMode(index)
                   }
-                  className={`py-2.5 px-1 rounded-2xl border text-center transition flex flex-col items-center justify-center ${
-                    selected
-                      ? "bg-[#1f222b] border-[#f5a623] text-[#f5a623]"
-                      : "bg-[#16181f] border-gray-800 text-gray-400"
+                  className={`rounded-[18px] min-h-[102px] flex flex-col items-center justify-center gap-2 transition ${
+                    modeIndex === index
+                      ? "bg-gradient-to-b from-[#ffe9a3] to-[#e6c46e] text-[#76501b]"
+                      : "text-[#dddddd]"
                   }`}
                 >
-                  <span className="text-xs font-extrabold">
+
+                  <div
+                    className={`w-11 h-11 rounded-full border-4 flex items-center justify-center ${
+                      modeIndex === index
+                        ? "border-[#c79738]"
+                        : "border-[#d9d9d9]"
+                    }`}
+                  >
+                    <Clock3
+                      size={25}
+                    />
+                  </div>
+
+                  <span className="text-[14px] font-medium text-center leading-4">
                     Win Go
+                    <br />
+                    {item.short}
                   </span>
 
-                  <span className="text-[10px]">
-                    {mode.label}
-                  </span>
                 </button>
-              );
-            }
-          )}
+              )
+            )}
 
-        </div>
+          </section>
 
-        {/* ROUND CARD */}
+          {/* =================================================
+              PERIOD / TIMER
+          ================================================= */}
 
-        <div className="bg-[#16181f] border border-gray-800 rounded-2xl p-4">
+          <section className="mt-4 rounded-[22px] bg-gradient-to-r from-[#ffe7a0] via-[#efd078] to-[#e2bc5e] text-[#704815] p-4">
 
-          <div className="flex justify-between items-center">
+            <div className="grid grid-cols-[1fr_1.05fr] gap-3">
 
-            <div>
+              <div>
 
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">
-                Current Period
-              </span>
+                <button
+                  onClick={() =>
+                    showToast(
+                      "Choose a number, color or size before placing a virtual bet."
+                    )
+                  }
+                  className="rounded-full border border-[#9b702a] px-5 py-2 text-[13px]"
+                >
+                  <Info
+                    size={14}
+                    className="inline mr-1"
+                  />
+                  How to play
+                </button>
 
-              <div className="text-xs font-mono font-bold">
-                {periodId || "..."}
-              </div>
+                <div className="mt-3 text-[14px]">
+                  Win Go{" "}
+                  {mode.short}
+                </div>
 
-            </div>
+                <div className="flex gap-2 mt-2">
 
-            <div className="text-right">
+                  {recentResults.map(
+                    (item) => (
+                      <div
+                        key={item.period}
+                        className={`w-9 h-9 rounded-full border-2 border-white/70 flex items-center justify-center text-sm font-bold text-white shadow-md ${getBallClass(
+                          item.number
+                        )}`}
+                      >
+                        {item.number}
+                      </div>
+                    )
+                  )}
 
-              <span className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">
-                Time Remaining
-              </span>
+                </div>
 
-              <div
-                className={`text-2xl font-mono font-black ${
-                  isLocked
-                    ? "text-rose-500 animate-pulse"
-                    : "text-[#f5a623]"
-                }`}
-              >
-                {formatTime(
-                  secondsRemaining
-                )}
-              </div>
-
-            </div>
-
-          </div>
-
-        </div>
-
-        {/* LAST RESULT */}
-
-        {currentResult && (
-          <div className="bg-[#16181f] border border-gray-800 rounded-2xl p-4">
-
-            <div className="flex items-center justify-between mb-3">
-
-              <span className="text-xs font-bold">
-                Last Result
-              </span>
-
-              <Trophy
-                size={16}
-                className="text-[#f5a623]"
-              />
-
-            </div>
-
-            <div className="flex items-center justify-between">
-
-              <div
-                className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-black ${getColorClass(
-                  currentResult.color
-                )}`}
-              >
-                {currentResult.number}
               </div>
 
               <div className="text-right">
 
-                <div className="text-sm font-bold">
-                  {currentResult.color}
+                <div className="text-[15px] font-semibold">
+                  Time remaining
                 </div>
 
-                <div className="text-xs text-gray-400">
-                  {currentResult.bigSmall}
+                <div className="flex justify-end items-center gap-1 mt-2 font-mono font-bold">
+
+                  {String(
+                    Math.floor(
+                      remaining / 60
+                    )
+                  )
+                    .padStart(2, "0")
+                    .split("")
+                    .map(
+                      (digit, index) => (
+                        <span
+                          key={`m-${index}`}
+                          className="bg-[#fff4ca] px-2 py-2 text-[23px]"
+                        >
+                          {digit}
+                        </span>
+                      )
+                    )}
+
+                  <span className="text-[22px]">
+                    :
+                  </span>
+
+                  {String(
+                    remaining % 60
+                  )
+                    .padStart(2, "0")
+                    .split("")
+                    .map(
+                      (digit, index) => (
+                        <span
+                          key={`s-${index}`}
+                          className="bg-[#fff4ca] px-2 py-2 text-[23px]"
+                        >
+                          {digit}
+                        </span>
+                      )
+                    )}
+
                 </div>
 
-                <div className="text-[10px] text-gray-500 mt-1">
-                  Period{" "}
-                  {currentResult.period}
+                <div className="mt-2 text-[19px] font-bold tracking-wide">
+                  {period}
                 </div>
 
               </div>
 
             </div>
 
-          </div>
-        )}
+          </section>
 
-        {/* COLORS */}
+          {/* =================================================
+              COLOR BUTTONS
+          ================================================= */}
 
-        <div className="grid grid-cols-3 gap-3">
+          <section className="mt-3 bg-[#303030] rounded-[18px] p-3">
 
-          <button
-            disabled={isLocked}
-            onClick={() =>
-              handleOpenSheet(
-                "Color",
-                "Green"
-              )
-            }
-            className="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 py-3 rounded-2xl font-bold text-sm"
-          >
-            Green
-          </button>
+            <div className="grid grid-cols-3 gap-4">
 
-          <button
-            disabled={isLocked}
-            onClick={() =>
-              handleOpenSheet(
-                "Color",
-                "Violet"
-              )
-            }
-            className="bg-purple-600 hover:bg-purple-500 disabled:opacity-40 py-3 rounded-2xl font-bold text-sm"
-          >
-            Violet
-          </button>
+              <button
+                onClick={() =>
+                  openBet(
+                    "Color",
+                    "Green"
+                  )
+                }
+                disabled={
+                  remaining <= 5
+                }
+                className="rounded-[13px] bg-[#49b87c] py-4 text-[18px] font-medium disabled:opacity-40"
+              >
+                Green
+              </button>
 
-          <button
-            disabled={isLocked}
-            onClick={() =>
-              handleOpenSheet(
-                "Color",
-                "Red"
-              )
-            }
-            className="bg-rose-600 hover:bg-rose-500 disabled:opacity-40 py-3 rounded-2xl font-bold text-sm"
-          >
-            Red
-          </button>
+              <button
+                onClick={() =>
+                  openBet(
+                    "Color",
+                    "Violet"
+                  )
+                }
+                disabled={
+                  remaining <= 5
+                }
+                className="rounded-[13px] bg-[#9948dc] py-4 text-[18px] font-medium disabled:opacity-40"
+              >
+                Violet
+              </button>
 
-        </div>
+              <button
+                onClick={() =>
+                  openBet(
+                    "Color",
+                    "Red"
+                  )
+                }
+                disabled={
+                  remaining <= 5
+                }
+                className="rounded-[13px] bg-[#e95760] py-4 text-[18px] font-medium disabled:opacity-40"
+              >
+                Red
+              </button>
 
-        {/* NUMBERS */}
+            </div>
 
-        <div className="bg-[#16181f] border border-gray-800 rounded-2xl p-3.5">
+            {/* =================================================
+                NUMBER BALLS
+            ================================================= */}
 
-          <div className="grid grid-cols-5 gap-2.5">
+            <div className="grid grid-cols-5 gap-3 mt-4">
 
-            {[0,1,2,3,4,5,6,7,8,9].map(
-              (num) => {
-
-                const color =
-                  getNumberColor(num);
-
-                return (
+              {Array.from(
+                { length: 10 },
+                (_, number) => (
                   <button
-                    key={num}
-                    disabled={isLocked}
+                    key={number}
+                    disabled={
+                      remaining <= 5
+                    }
                     onClick={() =>
-                      handleOpenSheet(
+                      openBet(
                         "Number",
-                        num
+                        number
                       )
                     }
-                    className={`h-11 rounded-full font-black text-sm flex items-center justify-center border shadow-md active:scale-95 transition disabled:opacity-40 ${
-                      color === "Violet"
-                        ? "bg-purple-600 border-purple-400"
-                        : color === "Red"
-                        ? "bg-rose-600 border-rose-400"
-                        : "bg-emerald-600 border-emerald-400"
-                    }`}
-                  >
-                    {num}
-                  </button>
-                );
-              }
-            )}
-
-          </div>
-
-        </div>
-
-        {/* BIG SMALL */}
-
-        <div className="grid grid-cols-2 gap-3">
-
-          <button
-            disabled={isLocked}
-            onClick={() =>
-              handleOpenSheet(
-                "Size",
-                "Big"
-              )
-            }
-            className="bg-[#f5a623] disabled:opacity-40 text-black font-extrabold py-3 rounded-2xl text-sm"
-          >
-            Big
-          </button>
-
-          <button
-            disabled={isLocked}
-            onClick={() =>
-              handleOpenSheet(
-                "Size",
-                "Small"
-              )
-            }
-            className="bg-sky-600 disabled:opacity-40 font-extrabold py-3 rounded-2xl text-sm"
-          >
-            Small
-          </button>
-
-        </div>
-
-        {/* CURRENT BETS */}
-
-        {pendingBets.length > 0 && (
-          <div className="bg-[#16181f] border border-gray-800 rounded-2xl overflow-hidden">
-
-            <div className="px-4 py-3 border-b border-gray-800">
-
-              <div className="flex justify-between">
-
-                <span className="text-xs font-bold">
-                  Current Bets
-                </span>
-
-                <span className="text-[10px] text-gray-500">
-                  {pendingBets.length} bet
-                  {pendingBets.length > 1
-                    ? "s"
-                    : ""}
-                </span>
-
-              </div>
-
-            </div>
-
-            <div className="divide-y divide-gray-800">
-
-              {pendingBets.map(
-                (bet) => (
-                  <div
-                    key={bet.id}
-                    className="px-4 py-3 flex items-center justify-between"
+                    className={`relative aspect-square rounded-full border-2 flex items-center justify-center text-[29px] font-bold text-white shadow-lg overflow-hidden disabled:opacity-40 ${getBallClass(
+                      number
+                    )}`}
                   >
 
-                    <div>
+                    {/* decorative highlight */}
+                    <span className="absolute top-1 left-2 w-4 h-2 rounded-full bg-white/70 rotate-[-20deg]" />
 
-                      <div className="text-xs font-bold">
-                        {bet.selection}
-                      </div>
-
-                      <div className="text-[10px] text-gray-500">
-                        {bet.type} • ₹
-                        {bet.amount}
-                      </div>
-
-                    </div>
-
-                    <span className="text-[10px] text-[#f5a623] font-bold">
-                      Pending
+                    <span className="relative z-10">
+                      {number}
                     </span>
 
-                  </div>
+                  </button>
                 )
               )}
 
             </div>
 
-          </div>
-        )}
+            {/* =================================================
+                MULTIPLIER ROW
+            ================================================= */}
 
-        {/* GAME RECORD */}
+            <div className="flex gap-2 mt-5 overflow-x-auto pb-1">
 
-        <div className="bg-[#16181f] border border-gray-800 rounded-2xl overflow-hidden">
+              <button
+                onClick={() => {
+                  setMultiplier(1);
+                  setQuantity(1);
+                }}
+                className={`shrink-0 px-5 py-3 rounded-xl border ${
+                  multiplier === 1
+                    ? "border-[#e4bb56] text-[#e4bb56]"
+                    : "border-[#777] text-[#ddd]"
+                }`}
+              >
+                Random
+              </button>
 
-          <div className="px-4 py-3 border-b border-gray-800 flex justify-between">
-
-            <span className="text-xs font-bold">
-              Game Record
-            </span>
-
-            <span className="text-[10px] text-gray-500">
-              {WIN_GO_MODES[
-                activeModeIndex
-              ].label}
-            </span>
-
-          </div>
-
-          <div className="divide-y divide-gray-800/60">
-
-            {historyData.length === 0 ? (
-
-              <div className="px-4 py-8 text-center text-xs text-gray-500">
-                Results will appear here after the first round.
-              </div>
-
-            ) : (
-
-              historyData.map(
+              {MULTIPLIERS.map(
                 (item) => (
-
-                  <div
-                    key={item.period}
-                    className="px-4 py-2.5 flex items-center justify-between text-xs"
+                  <button
+                    key={item}
+                    onClick={() =>
+                      setMultiplier(item)
+                    }
+                    className={`shrink-0 px-4 py-3 rounded-xl ${
+                      multiplier === item
+                        ? "bg-[#e6bd55] text-[#51340d]"
+                        : "bg-[#bfc0c5] text-[#353535]"
+                    }`}
                   >
-
-                    <span className="text-gray-400 font-mono text-[10px]">
-                      {item.period}
-                    </span>
-
-                    <span
-                      className={`w-7 h-7 rounded-full ${item.color} flex items-center justify-center font-black text-white`}
-                    >
-                      {item.number}
-                    </span>
-
-                    <span className="text-gray-300">
-                      {item.bigSmall}
-                    </span>
-
-                    <span className="text-[10px] text-gray-500">
-                      {item.colorName}
-                    </span>
-
-                  </div>
-
+                    X{item}
+                  </button>
                 )
-              )
+              )}
 
-            )}
+            </div>
 
-          </div>
+            {/* =================================================
+                BIG SMALL
+            ================================================= */}
 
-        </div>
+            <div className="grid grid-cols-2 mt-4 rounded-full overflow-hidden">
 
-      </div>
-
-      {/* LOCK OVERLAY */}
-
-      {isLocked && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center">
-
-          <div className="text-center">
-
-            <Clock3
-              size={30}
-              className="mx-auto text-[#f5a623] mb-4"
-            />
-
-            <div className="flex gap-3">
-
-              <div className="w-20 h-28 bg-gradient-to-b from-[#d4a046] to-[#a37220] text-black font-mono font-black text-6xl rounded-3xl flex items-center justify-center">
-                {String(
-                  Math.floor(
-                    secondsRemaining / 10
+              <button
+                onClick={() =>
+                  openBet(
+                    "Size",
+                    "Big"
                   )
-                )}
-              </div>
+                }
+                disabled={
+                  remaining <= 5
+                }
+                className="bg-[#f7af46] py-4 text-[20px] disabled:opacity-40"
+              >
+                Big
+              </button>
 
-              <div className="w-20 h-28 bg-gradient-to-b from-[#d4a046] to-[#a37220] text-black font-mono font-black text-6xl rounded-3xl flex items-center justify-center">
-                {String(
-                  secondsRemaining % 10
-                )}
-              </div>
+              <button
+                onClick={() =>
+                  openBet(
+                    "Size",
+                    "Small"
+                  )
+                }
+                disabled={
+                  remaining <= 5
+                }
+                className="bg-[#6f9de7] py-4 text-[20px] disabled:opacity-40"
+              >
+                Small
+              </button>
 
             </div>
 
-            <div className="text-xs text-gray-400 mt-4">
-              Round locked
+          </section>
+
+          {/* =================================================
+              HISTORY TABS
+          ================================================= */}
+
+          <section className="mt-5">
+
+            <div className="grid grid-cols-3 gap-4">
+
+              <button
+                onClick={() =>
+                  changeTab("game")
+                }
+                className={`rounded-[14px] py-4 text-[17px] ${
+                  tab === "game"
+                    ? "bg-gradient-to-b from-[#ffe9a3] to-[#e5bd5c] text-[#76501b]"
+                    : "bg-[#3b3b3b] text-[#ddd]"
+                }`}
+              >
+                Game history
+              </button>
+
+              <button
+                onClick={() =>
+                  changeTab("chart")
+                }
+                className={`rounded-[14px] py-4 text-[17px] ${
+                  tab === "chart"
+                    ? "bg-gradient-to-b from-[#ffe9a3] to-[#e5bd5c] text-[#76501b]"
+                    : "bg-[#3b3b3b] text-[#ddd]"
+                }`}
+              >
+                Chart
+              </button>
+
+              <button
+                onClick={() =>
+                  changeTab("my")
+                }
+                className={`rounded-[14px] py-4 text-[17px] ${
+                  tab === "my"
+                    ? "bg-gradient-to-b from-[#ffe9a3] to-[#e5bd5c] text-[#76501b]"
+                    : "bg-[#3b3b3b] text-[#ddd]"
+                }`}
+              >
+                My history
+              </button>
+
             </div>
 
-          </div>
+            {/* =================================================
+                GAME HISTORY
+            ================================================= */}
 
-        </div>
-      )}
+            {tab === "game" && (
+              <div className="mt-4 rounded-[14px] overflow-hidden bg-[#393939]">
 
-      {/* ERROR */}
+                <div className="grid grid-cols-[1.5fr_.65fr_1fr_.55fr] bg-[#727272] px-2 py-4 text-center font-semibold">
 
-      {errorMsg && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[70] bg-rose-600 text-white text-xs px-4 py-2 rounded-xl flex items-center gap-1.5 shadow-lg">
+                  <span>Period</span>
+                  <span>Number</span>
+                  <span>Big Small</span>
+                  <span>Color</span>
 
-          <AlertCircle size={15} />
-
-          {errorMsg}
-
-        </div>
-      )}
-
-      {/* BET SUCCESS */}
-
-      {successToast && (
-        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 text-white text-xs px-4 py-2 rounded-xl font-bold shadow-lg">
-          {successToast}
-        </div>
-      )}
-
-      {/* RESULT TOAST */}
-
-      {resultToast && (
-        <div className="fixed top-28 left-1/2 -translate-x-1/2 z-[70] bg-[#f5a623] text-black px-5 py-3 rounded-2xl font-black text-xs shadow-2xl text-center">
-          {resultToast}
-        </div>
-      )}
-
-      {/* BETTING SHEET */}
-
-      {isSheetOpen && (
-
-        <div className="fixed inset-0 bg-black/70 z-[60] flex items-end justify-center">
-
-          <div className="w-full max-w-md bg-[#16181f] rounded-t-3xl p-5 border-t border-gray-700 space-y-4">
-
-            <div className="flex justify-between items-center pb-2 border-b border-gray-800">
-
-              <div>
-
-                <div className="font-bold text-sm text-[#f5a623]">
-                  Win Go{" "}
-                  {
-                    WIN_GO_MODES[
-                      activeModeIndex
-                    ].label
-                  }
                 </div>
 
-                <div className="text-[10px] text-gray-400 mt-1">
-                  Bet on{" "}
-                  <span className="text-white font-bold">
-                    {betSelection}
+                {visibleItems.length === 0 ? (
+                  <div className="py-12 text-center text-[#aaa]">
+                    Results will appear after the first round.
+                  </div>
+                ) : (
+                  visibleItems.map(
+                    (item) => (
+                      <div
+                        key={item.period}
+                        className="grid grid-cols-[1.5fr_.65fr_1fr_.55fr] px-2 py-4 text-center border-b border-[#505050]"
+                      >
+
+                        <span className="text-[12px] flex items-center justify-center">
+                          {item.period}
+                        </span>
+
+                        <span
+                          className={`text-[29px] font-bold ${getColorClass(
+                            item.color
+                          )}`}
+                        >
+                          {item.number}
+                        </span>
+
+                        <span className="flex items-center justify-center">
+                          {item.size}
+                        </span>
+
+                        <span className="flex justify-center items-center">
+
+                          <span
+                            className={`w-5 h-5 rounded-full ${getBallClass(
+                              item.number
+                            )}`}
+                          />
+
+                        </span>
+
+                      </div>
+                    )
+                  )
+                )}
+
+              </div>
+            )}
+
+            {/* =================================================
+                CHART
+            ================================================= */}
+
+            {tab === "chart" && (
+              <div className="mt-4 rounded-[14px] bg-[#393939] p-5">
+
+                <div className="text-center text-[#aaa] mb-5">
+                  Recent virtual results
+                </div>
+
+                <div className="flex flex-wrap justify-center gap-3">
+
+                  {results
+                    .slice(0, 30)
+                    .map((item) => (
+                      <div
+                        key={item.period}
+                        className="text-center"
+                      >
+
+                        <div
+                          className={`w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold ${getBallClass(
+                            item.number
+                          )}`}
+                        >
+                          {item.number}
+                        </div>
+
+                        <div className="text-[9px] text-[#aaa] mt-1">
+                          {item.size}
+                        </div>
+
+                      </div>
+                    ))}
+
+                </div>
+
+              </div>
+            )}
+
+            {/* =================================================
+                MY HISTORY
+            ================================================= */}
+
+            {tab === "my" && (
+              <div className="mt-4 rounded-[14px] overflow-hidden bg-[#393939]">
+
+                {visibleItems.length === 0 ? (
+                  <div className="py-12 text-center text-[#aaa]">
+                    You have no virtual bets yet.
+                  </div>
+                ) : (
+                  visibleItems.map(
+                    (item) => (
+                      <div
+                        key={item.id}
+                        className="p-4 border-b border-[#505050]"
+                      >
+
+                        <div className="flex justify-between">
+
+                          <div>
+                            <div className="font-semibold">
+                              {item.selection}
+                            </div>
+
+                            <div className="text-[11px] text-[#999]">
+                              {item.type} • Period{" "}
+                              {item.period}
+                            </div>
+                          </div>
+
+                          <div
+                            className={
+                              item.status ===
+                              "WIN"
+                                ? "text-[#48c98b]"
+                                : "text-[#f05d68]"
+                            }
+                          >
+                            {item.status}
+                          </div>
+
+                        </div>
+
+                        <div className="flex justify-between mt-3 text-sm">
+
+                          <span>
+                            Bet{" "}
+                            {money(
+                              item.amount
+                            )}
+                          </span>
+
+                          <span>
+                            {item.status ===
+                            "WIN"
+                              ? `+${money(
+                                  item.netPayout
+                                )}`
+                              : "₹0.00"}
+                          </span>
+
+                        </div>
+
+                      </div>
+                    )
+                  )
+                )}
+
+              </div>
+            )}
+
+            {/* =================================================
+                PAGINATION
+            ================================================= */}
+
+            <div className="mt-4 bg-[#393939] rounded-[12px] p-5 flex items-center justify-between">
+
+              <button
+                disabled={
+                  safePage <= 1
+                }
+                onClick={() =>
+                  setPage(
+                    (p) =>
+                      Math.max(
+                        1,
+                        p - 1
+                      )
+                  )
+                }
+                className="w-16 h-14 rounded-xl bg-[#c9c9ce] text-[#555] disabled:opacity-40 flex items-center justify-center"
+              >
+                <ChevronLeft
+                  size={30}
+                />
+              </button>
+
+              <span className="text-[#ddd]">
+                {safePage}/{totalPages}
+              </span>
+
+              <button
+                disabled={
+                  safePage >=
+                  totalPages
+                }
+                onClick={() =>
+                  setPage(
+                    (p) =>
+                      Math.min(
+                        totalPages,
+                        p + 1
+                      )
+                  )
+                }
+                className="w-16 h-14 rounded-xl bg-[#e7c25e] text-[#76501b] disabled:opacity-40 flex items-center justify-center"
+              >
+                <ChevronRight
+                  size={30}
+                />
+              </button>
+
+            </div>
+
+          </section>
+
+        </div>
+
+        {/* =====================================================
+            BETTING MODAL
+        ===================================================== */}
+
+        {modal && (
+          <div className="fixed inset-0 z-[100] bg-black/75 flex items-end justify-center">
+
+            <div className="w-full max-w-[430px] bg-[#292929] rounded-t-[30px] overflow-hidden">
+
+              {/* HEADER */}
+
+              <div className="relative bg-gradient-to-b from-[#666] to-[#333] px-5 pt-5 pb-12 text-center">
+
+                <button
+                  onClick={() =>
+                    setModal(null)
+                  }
+                  className="absolute right-4 top-4 text-white"
+                >
+                  <X />
+                </button>
+
+                <div className="text-[22px] font-bold">
+                  Win Go{" "}
+                  {mode.short}
+                </div>
+
+                <div className="mt-4 rounded-lg bg-[#444] py-3 text-[#f2bd42]">
+                  Select{" "}
+                  <span className="font-bold">
+                    {modal.selection}
                   </span>
                 </div>
 
               </div>
 
-              <button
-                onClick={() =>
-                  setIsSheetOpen(false)
-                }
-                className="text-gray-400 hover:text-white"
-              >
-                <X size={18} />
-              </button>
+              {/* BODY */}
 
-            </div>
+              <div className="px-6 py-5">
 
-            {/* BASE */}
+                {/* BALANCE */}
 
-            <div>
+                <div className="flex items-center justify-between">
 
-              <span className="text-[11px] text-gray-400 block mb-1.5">
-                Base Amount
-              </span>
+                  <span className="text-[20px]">
+                    Balance
+                  </span>
 
-              <div className="grid grid-cols-4 gap-2">
+                  <div className="flex gap-3">
 
-                {BASE_AMOUNTS.map(
-                  (value) => (
+                    {BASE_AMOUNTS.map(
+                      (amount) => (
+                        <button
+                          key={amount}
+                          onClick={() =>
+                            setBaseAmount(
+                              amount
+                            )
+                          }
+                          className={`px-4 py-3 rounded-lg ${
+                            baseAmount ===
+                            amount
+                              ? "bg-[#e7bd55] text-[#51350d]"
+                              : "bg-[#414141] text-[#ddd]"
+                          }`}
+                        >
+                          {amount}
+                        </button>
+                      )
+                    )}
 
-                    <button
-                      key={value}
-                      onClick={() =>
-                        setBaseUnit(value)
-                      }
-                      className={`py-2 rounded-xl text-xs font-bold border ${
-                        baseUnit === value
-                          ? "bg-[#f5a623] text-black border-[#f5a623]"
-                          : "bg-[#101217] border-gray-800 text-gray-300"
-                      }`}
-                    >
-                      ₹{value}
-                    </button>
+                  </div>
 
-                  )
-                )}
+                </div>
 
-              </div>
+                {/* QUANTITY */}
 
-            </div>
+                <div className="mt-7 flex items-center justify-between">
 
-            {/* MULTIPLIER */}
+                  <span className="text-[20px]">
+                    Quantity
+                  </span>
 
-            <div>
-
-              <span className="text-[11px] text-gray-400 block mb-1.5">
-                Quantity
-              </span>
-
-              <div className="grid grid-cols-6 gap-1.5">
-
-                {MULTIPLIERS.map(
-                  (m) => (
+                  <div className="flex items-center gap-3">
 
                     <button
-                      key={m}
                       onClick={() =>
-                        setMultiplier(m)
+                        setQuantity(
+                          (q) =>
+                            Math.max(
+                              1,
+                              q - 1
+                            )
+                        )
                       }
-                      className={`py-1.5 rounded-lg text-xs font-bold border ${
-                        multiplier === m
-                          ? "bg-[#f5a623] text-black border-[#f5a623]"
-                          : "bg-[#101217] border-gray-800 text-gray-400"
-                      }`}
+                      className="w-11 h-11 rounded-full bg-[#e7bd55] text-[#583b0e] flex items-center justify-center"
                     >
-                      X{m}
+                      <Minus />
                     </button>
 
-                  )
-                )}
+                    <div className="w-32 h-11 rounded-full bg-[#7f8293] flex items-center justify-center text-white">
+                      {quantity}
+                    </div>
+
+                    <button
+                      onClick={() =>
+                        setQuantity(
+                          (q) =>
+                            q + 1
+                        )
+                      }
+                      className="w-11 h-11 rounded-full bg-[#e7bd55] text-[#583b0e] flex items-center justify-center"
+                    >
+                      <Plus />
+                    </button>
+
+                  </div>
+
+                </div>
+
+                {/* MULTIPLIERS */}
+
+                <div className="grid grid-cols-6 gap-2 mt-7">
+
+                  {MULTIPLIERS.map(
+                    (value) => (
+                      <button
+                        key={value}
+                        onClick={() =>
+                          setMultiplier(
+                            value
+                          )
+                        }
+                        className={`py-3 rounded-lg text-[14px] ${
+                          multiplier ===
+                          value
+                            ? "bg-[#e7bd55] text-[#55380b]"
+                            : "bg-[#414141] text-[#ddd]"
+                        }`}
+                      >
+                        X{value}
+                      </button>
+                    )
+                  )}
+
+                </div>
+
+                {/* DEMO RULE */}
+
+                <div className="mt-6 flex items-center gap-3 text-[#ddd]">
+
+                  <div className="w-7 h-7 rounded-full border-2 border-[#e7bd55] flex items-center justify-center text-[#e7bd55]">
+                    ✓
+                  </div>
+
+                  <span>
+                    I agree
+                  </span>
+
+                  <button
+                    onClick={() =>
+                      showToast(
+                        "Virtual game rules"
+                      )
+                    }
+                    className="text-[#e7bd55]"
+                  >
+                    《Pre-sale rules》
+                  </button>
+
+                </div>
 
               </div>
 
-            </div>
+              {/* FOOTER */}
 
-            {/* PAYOUT INFO */}
+              <div className="grid grid-cols-2">
 
-            <div className="bg-black/30 border border-gray-800 rounded-xl p-3">
+                <button
+                  onClick={() =>
+                    setModal(null)
+                  }
+                  className="bg-[#454545] py-5 text-[#ddd] text-[17px]"
+                >
+                  Cancel
+                </button>
 
-              <div className="flex justify-between text-[11px]">
-
-                <span className="text-gray-400">
-                  Bet amount
-                </span>
-
-                <span>
-                  ₹{totalBetAmount.toFixed(2)}
-                </span>
-
-              </div>
-
-              <div className="flex justify-between text-[11px] mt-1">
-
-                <span className="text-gray-400">
-                  Demo payout
-                </span>
-
-                <span className="text-emerald-400">
-                  {PAYOUTS[betType]}×
-                </span>
+                <button
+                  onClick={placeBet}
+                  className="bg-[#e3ba4f] py-5 text-[#57390b] text-[17px] font-semibold"
+                >
+                  Total amount{" "}
+                  {money(
+                    totalAmount
+                  )}
+                </button>
 
               </div>
-
-              <div className="flex justify-between text-[11px] mt-1">
-
-                <span className="text-gray-400">
-                  Winning deduction
-                </span>
-
-                <span className="text-gray-400">
-                  0.3%
-                </span>
-
-              </div>
-
-            </div>
-
-            {/* ACTIONS */}
-
-            <div className="flex gap-3 pt-2">
-
-              <button
-                onClick={() =>
-                  setIsSheetOpen(false)
-                }
-                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 py-3 rounded-xl text-xs font-bold"
-              >
-                Cancel
-              </button>
-
-              <button
-                onClick={handleConfirmBet}
-                className="flex-1 bg-[#f5a623] hover:bg-[#e0961f] text-black py-3 rounded-xl text-xs font-bold"
-              >
-                Bet ₹
-                {totalBetAmount.toFixed(2)}
-              </button>
 
             </div>
 
           </div>
+        )}
 
-        </div>
+        {/* =====================================================
+            TOAST
+        ===================================================== */}
 
-      )}
+        {toast && (
+          <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[200] bg-black/90 text-white px-5 py-3 rounded-xl text-sm shadow-2xl">
+            {toast}
+          </div>
+        )}
 
-    </div>
+      </div>
+    </main>
   );
 }
